@@ -1,10 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 import { 
   Trophy, Swords, Target, Clock, Zap, Medal, 
   Share2, Edit3, MapPin, Calendar, Award 
 } from 'lucide-react';
 
 const ProfileView = ({ onEditProfile }) => {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setLoading(false);
+    };
+    fetchUser();
+  }, []);
+
+  if (loading) return <div className="text-white p-8">Loading profile...</div>;
+
+  const displayName = user?.user_metadata?.full_name || 'User';
+  const realName = user?.user_metadata?.real_name;
+
   return (
     <div className="animate-fade-in-up">
       {/* --- HERO SECTION --- */}
@@ -38,11 +56,11 @@ const ProfileView = ({ onEditProfile }) => {
             <div className="flex justify-between items-end">
               <div>
                 <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-                  ShadowHunter
+                  {displayName}
+                  {realName && <span className="text-lg font-normal text-gray-400">({realName})</span>}
                   <Medal className="text-fuchsia-500" size={24} />
                 </h1>
                 <div className="flex items-center gap-4 text-gray-400 text-sm mt-1">
-                  <span className="flex items-center gap-1"><MapPin size={14} /> Vietnam</span>
                   <span className="flex items-center gap-1"><Calendar size={14} /> Joined 2023</span>
                   <span className="text-fuchsia-400">Pro Player</span>
                 </div>
