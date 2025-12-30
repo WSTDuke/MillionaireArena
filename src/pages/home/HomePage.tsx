@@ -1,8 +1,11 @@
 import React from 'react';
 import { Swords, Trophy, Users, Zap, ArrowRight, Shield, Target } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import LoginRequiredModal from '../../components/LoginRequiredModal';
 
 const MillionArena = () => {
+  const [showLoginModal, setShowLoginModal] = React.useState(false);
+
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-fuchsia-500 selection:text-white overflow-x-hidden">
       
@@ -19,10 +22,10 @@ const MillionArena = () => {
 
           {/* Nav Links (Hidden on mobile for simplicity) */}
           <nav className="hidden md:flex gap-8 text-sm font-medium text-gray-300">
-            <a href="#" className="hover:text-fuchsia-400 transition-colors">Giải đấu</a>
-            <a href="#" className="hover:text-fuchsia-400 transition-colors">Bảng xếp hạng</a>
-            <a href="#" className="hover:text-fuchsia-400 transition-colors">Cộng đồng</a>
-            <a href="#" className="hover:text-fuchsia-400 transition-colors">Marketplace</a>
+            <button onClick={() => setShowLoginModal(true)} className="hover:text-fuchsia-400 transition-colors">Giải đấu</button>
+            <button onClick={() => setShowLoginModal(true)} className="hover:text-fuchsia-400 transition-colors">Bảng xếp hạng</button>
+            <button onClick={() => setShowLoginModal(true)} className="hover:text-fuchsia-400 transition-colors">Cộng đồng</button>
+            <button onClick={() => setShowLoginModal(true)} className="hover:text-fuchsia-400 transition-colors">Marketplace</button>
           </nav>
 
           {/* CTA Button */}
@@ -57,10 +60,11 @@ const MillionArena = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link to='/login'>
             <button className="px-8 py-4 rounded-xl bg-white text-black font-bold text-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
               <Zap className="w-5 h-5 fill-black" />
               Bắt đầu miễn phí
-            </button>
+            </button></Link>
             <button className="px-8 py-4 rounded-xl border border-white/20 bg-white/5 hover:bg-white/10 text-white font-bold text-lg backdrop-blur-sm transition-colors flex items-center justify-center gap-2">
               Xem trailer
               <ArrowRight className="w-5 h-5" />
@@ -187,6 +191,8 @@ const MillionArena = () => {
           </div>
         </div>
       </footer>
+
+      <LoginRequiredModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
     </div>
   );
 };

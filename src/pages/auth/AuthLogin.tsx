@@ -1,9 +1,40 @@
-import React, { useState } from 'react';
-import { Swords, Mail, Lock, Eye, EyeOff, ArrowRight, Github } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Mail, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
 const LoginPage = () => {
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (loginError) throw loginError;
+
+      if (data.session) {
+        navigate('/dashboard'); // Chuyển hướng về trang chủ/dashboard sau khi login
+      }
+    } catch (err: any) {
+      setError(err.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen w-full flex bg-black text-white font-sans selection:bg-fuchsia-500 selection:text-white">
@@ -17,12 +48,23 @@ const LoginPage = () => {
             <p className="text-gray-400">Đăng nhập để tiếp tục chinh phục vinh quang.</p>
           </div>
 
-          <form className="space-y-8">
+          <form className="space-y-8" onSubmit={handleLogin}>
             
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 bg-red-500/20 border border-red-500 text-red-200 text-sm rounded">
+                {error}
+              </div>
+            )}
+
             {/* Input 1: Email (Material Underline style - Giữ nguyên) */}
             <div className="relative z-0 w-full group">
-              <input type="email" name="email" id="email" required
-                className="block py-3 px-0 w-full text-lg text-white bg-transparent border-0 border-b-2 border-gray-700 appearance-none focus:outline-none focus:ring-0 focus:border-fuchsia-500 peer placeholder-transparent" placeholder=" " />
+              <input 
+                type="email" name="email" id="email" required
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                className="block py-3 px-0 w-full text-lg text-white bg-transparent border-0 border-b-2 border-gray-700 appearance-none focus:outline-none focus:ring-0 focus:border-fuchsia-500 peer placeholder-transparent" placeholder=" " 
+              />
               <label htmlFor="email" className="peer-focus:font-medium absolute text-gray-500 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:left-0 peer-focus:text-fuchsia-500 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6">
                 Địa chỉ Email
               </label>
@@ -33,8 +75,12 @@ const LoginPage = () => {
 
             {/* Input 2: Password (Material Underline style - Giữ nguyên) */}
             <div className="relative z-0 w-full group">
-              <input type={showPassword ? "text" : "password"} name="password" id="password" required
-                className="block py-3 px-0 w-full text-lg text-white bg-transparent border-0 border-b-2 border-gray-700 appearance-none focus:outline-none focus:ring-0 focus:border-fuchsia-500 peer placeholder-transparent" placeholder=" " />
+              <input 
+                type={showPassword ? "text" : "password"} name="password" id="password" required
+                value={formData.password}
+                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                className="block py-3 px-0 w-full text-lg text-white bg-transparent border-0 border-b-2 border-gray-700 appearance-none focus:outline-none focus:ring-0 focus:border-fuchsia-500 peer placeholder-transparent" placeholder=" " 
+              />
               <label htmlFor="password" className="peer-focus:font-medium absolute text-gray-500 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:left-0 peer-focus:text-fuchsia-500 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6">
                 Mật khẩu
               </label>
@@ -48,9 +94,13 @@ const LoginPage = () => {
             <div className="flex justify-end">
               <a href="#" className="text-sm font-medium text-fuchsia-400 hover:text-fuchsia-300 transition-colors">Quên mật khẩu?</a>
             </div>
-            <button type="button" className="w-full py-4 px-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-bold rounded-lg shadow-[0_0_20px_rgba(192,38,211,0.4)] hover:shadow-[0_0_30px_rgba(192,38,211,0.6)] transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group">
-              Vào đấu trường ngay
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full py-4 px-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-bold rounded-lg shadow-[0_0_20px_rgba(192,38,211,0.4)] hover:shadow-[0_0_30px_rgba(192,38,211,0.6)] transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Đang đăng nhập...' : 'Vào đấu trường ngay'}
+              {!loading && <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />}
             </button>
             <div className="mt-10 text-center text-sm text-gray-500">
              Chưa là thành viên? <Link to="/signup" className="text-fuchsia-500 hover:text-fuchsia-400 font-bold hover:underline">Đăng ký ngay</Link>
