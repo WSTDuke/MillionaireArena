@@ -1,75 +1,126 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { Link } from 'react-router-dom';
 import { 
   Trophy, Swords, Target, Clock, Zap, Medal, 
-  Share2, Edit3, MapPin, Calendar, Award 
+  Share2, Edit3, MapPin, Calendar, Award, Globe, User as UserIcon
 } from 'lucide-react';
 
-const ProfileView = ({ onEditProfile }) => {
+interface ProfileData {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  description?: string | null;
+  display_name?: string | null;
+  created_at?: string;
+}
+
+const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      setLoading(false);
+    const fetchProfileData = async () => {
+      try {
+        // 1. Lấy user auth
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+
+        if (user) {
+          // 2. Lấy thông tin chi tiết từ bảng profiles
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+          
+          if (data) {
+            setProfile(data);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      } finally {
+        setLoading(false);
+      }
     };
-    fetchUser();
+
+    fetchProfileData();
   }, []);
 
-  if (loading) return <div className="text-white p-8">Loading profile...</div>;
+  if (loading) return <div className="text-white p-8">Đang tải hồ sơ...</div>;
 
-  const displayName = user?.user_metadata?.full_name || 'User';
-  const realName = user?.user_metadata?.real_name;
+  // Logic ưu tiên hiển thị: Profile DB -> User Metadata -> Email -> Default
+  const displayName = profile?.display_name || user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'User';
+  const fullName = profile?.full_name || user?.user_metadata?.full_name;
+  
+  const avatarSrc = profile?.avatar_url || "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=200&h=200";
+  const userDescription = profile?.description || "Chưa có giới thiệu bản thân.";
+  const joinDate = user?.created_at ? new Date(user.created_at).getFullYear() : '2025';
 
   return (
-    <div className="animate-fade-in-up">
+    <div className="animate-fade-in-up pb-10">
       {/* --- HERO SECTION --- */}
       <div className="relative mb-24">
         {/* Cover Image */}
-        <div className="h-64 rounded-2xl overflow-hidden relative">
+        <div className="h-64 rounded-2xl overflow-hidden relative border border-white/5">
           <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center"></div>
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
         </div>
 
         {/* Profile Info Overlay */}
-        <div className="absolute -bottom-16 left-8 flex items-end gap-6 w-[calc(100%-4rem)]">
+        <div className="absolute -bottom-16 left-4 md:left-8 flex items-end gap-6 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)]">
           {/* Avatar */}
-          <div className="relative">
-            <div className="w-32 h-32 rounded-full p-1 bg-black">
+          <div className="relative group">
+            <div className="w-32 h-32 rounded-full p-1 bg-neutral-900">
               <div className="w-full h-full rounded-full bg-gradient-to-tr from-fuchsia-500 to-purple-600 p-[2px]">
                 <img 
-                  src="https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100" 
+                  src={avatarSrc} 
                   alt="Avatar" 
-                  className="w-full h-full rounded-full object-cover border-4 border-black" 
+                  className="w-full h-full rounded-full object-cover border-4 border-neutral-900" 
                 />
               </div>
             </div>
-            <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-black px-2 py-0.5 rounded-full text-xs font-bold border-2 border-black">
+            <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-black px-2 py-0.5 rounded-full text-xs font-bold border-2 border-black shadow-lg">
               LVL 42
             </div>
           </div>
 
           {/* Text Info */}
           <div className="flex-1 mb-2">
-            <div className="flex justify-between items-end">
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
               <div>
-                <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-                  {displayName}
-                  {realName && <span className="text-lg font-normal text-gray-400">({realName})</span>}
-                  <Medal className="text-fuchsia-500" size={24} />
+                <h1 className="text-3xl font-bold text-white flex items-end gap-2 flex-wrap">
+                  <span>{displayName}</span>
+                  {fullName && fullName !== displayName && (
+                    <span className="text-xl font-medium text-gray-400 pb-0.5">({fullName})</span>
+                  )}
+                  <Medal className="text-fuchsia-500 mb-1" size={24} />
                 </h1>
-                <div className="flex items-center gap-4 text-gray-400 text-sm mt-1">
-                  <span className="flex items-center gap-1"><Calendar size={14} /> Joined 2023</span>
-                  <span className="text-fuchsia-400">Pro Player</span>
+                
+                <div className="mt-2 space-y-1">
+                    <p className="text-gray-300 text-sm max-w-lg line-clamp-2 italic">
+                        {userDescription}
+                    </p>
+                    
+                    <div className="flex flex-wrap items-center gap-4 text-gray-400 text-xs md:text-sm mt-2">
+                        <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
+                            <Calendar size={12} /> Gia nhập {joinDate}
+                        </span>
+                        <span className="text-fuchsia-400 font-bold px-2 py-1 bg-fuchsia-500/10 rounded-md border border-fuchsia-500/20">
+                            Pro Player
+                        </span>
+                    </div>
                 </div>
               </div>
 
+              {/* Actions */}
               <div className="flex gap-3">
-                <button className="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-white font-medium flex items-center gap-2 transition-colors">
-                  <Share2 size={18} /> Chia sẻ
+                <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white font-medium flex items-center gap-2 transition-colors">
+                  <Share2 size={18} /> <span className="hidden sm:inline">Chia sẻ</span>
                 </button>
+                
                 <button 
                   onClick={onEditProfile}
                   className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(192,38,211,0.3)] flex items-center gap-2 transition-colors"
@@ -83,21 +134,20 @@ const ProfileView = ({ onEditProfile }) => {
       </div>
 
       {/* --- CONTENT GRID --- */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pt-6">
         
         {/* LEFT COLUMN (Detailed Stats) */}
         <div className="xl:col-span-1 space-y-8">
           
           {/* Main Rank Card */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden">
+          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden backdrop-blur-sm">
             <div className="absolute top-0 right-0 w-48 h-48 bg-fuchsia-600/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-              <Trophy className="text-yellow-500" size={20} /> Competitive Rank
+            <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-white">
+              <Trophy className="text-yellow-500" size={20} /> Xếp hạng (Rank)
             </h3>
             
             <div className="flex flex-col items-center justify-center py-4">
               <div className="w-32 h-32 relative mb-4">
-                 {/* Placeholder for Rank Icon SVG */}
                  <div className="absolute inset-0 flex items-center justify-center">
                     <Trophy size={64} className="text-fuchsia-400 drop-shadow-[0_0_15px_rgba(192,38,211,0.5)]" />
                  </div>
@@ -111,11 +161,11 @@ const ProfileView = ({ onEditProfile }) => {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="text-center p-3 bg-white/5 rounded-xl">
+              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/5">
                 <div className="text-xs text-gray-500">Global Rank</div>
                 <div className="font-bold text-white">#1,240</div>
               </div>
-              <div className="text-center p-3 bg-white/5 rounded-xl">
+              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/5">
                 <div className="text-xs text-gray-500">Server Rank</div>
                 <div className="font-bold text-white">#42</div>
               </div>
@@ -123,9 +173,9 @@ const ProfileView = ({ onEditProfile }) => {
           </div>
 
           {/* Skill Radar / Bars */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Target className="text-blue-500" size={20} /> Kỹ năng
+          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
+              <Target className="text-blue-500" size={20} /> Chỉ số kỹ năng
             </h3>
             <div className="space-y-4">
               <SkillBar label="Kỹ năng cá nhân" percent={85} color="bg-blue-500" />
@@ -136,18 +186,18 @@ const ProfileView = ({ onEditProfile }) => {
           </div>
 
           {/* Information */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-            <h3 className="text-lg font-bold mb-4">Thông tin</h3>
+          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <h3 className="text-lg font-bold mb-4 text-white">Thông tin thêm</h3>
             <ul className="space-y-3 text-sm text-gray-400">
-              <li className="flex justify-between">
-                <span>Tuổi</span>
-                <span className="text-white">24</span>
+              <li className="flex justify-between border-b border-white/5 pb-2">
+                <span>ID Người dùng</span>
+                <span className="text-white font-mono text-xs">{user?.id?.slice(0,8)}...</span>
               </li>
-              <li className="flex justify-between">
-                <span>Giới tính</span>
-                <span className="text-white">Nam</span>
+              <li className="flex justify-between border-b border-white/5 pb-2">
+                <span>Email</span>
+                <span className="text-white truncate max-w-[150px]">{user?.email}</span>
               </li>
-              <li className="flex justify-between">
+              <li className="flex justify-between border-b border-white/5 pb-2">
                 <span>Discord</span>
                 <span className="text-white hover:text-fuchsia-400 cursor-pointer">shadow#1234</span>
               </li>
@@ -171,12 +221,12 @@ const ProfileView = ({ onEditProfile }) => {
           </div>
 
           {/* Achievements */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
+          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold flex items-center gap-2">
+              <h3 className="text-lg font-bold flex items-center gap-2 text-white">
                 <Award className="text-yellow-500" size={20} /> Thành tựu nổi bật
               </h3>
-              <button className="text-xs text-fuchsia-400 hover:text-fuchsia-300">Xem tất cả</button>
+              <button className="text-xs text-fuchsia-400 hover:text-fuchsia-300 transition-colors">Xem tất cả</button>
             </div>
             <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
               <AchievementCard title="MVP Mùa giải" tier="Legendary" icon="👑" color="from-yellow-500 to-orange-600" />
@@ -187,13 +237,12 @@ const ProfileView = ({ onEditProfile }) => {
             </div>
           </div>
 
-          {/* Match History (Reusing design style) */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-               <Zap className="text-fuchsia-500" size={20} /> Trận đấu gần đây
+          {/* Match History */}
+          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
+            <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-white">
+               <Zap className="text-fuchsia-500" size={20} /> Lịch sử đấu (Mock Data)
             </h3>
             <div className="space-y-4">
-               {/* Mock Data */}
                <ProfileMatchRow result="Victory" mode="Ranked 5v5" hero="Yasuo" kda="15/2/8" time="2h ago" score="+25 MMR" />
                <ProfileMatchRow result="Defeat" mode="Ranked 5v5" hero="Yone" kda="5/8/2" time="5h ago" score="-18 MMR" isWin={false} />
                <ProfileMatchRow result="Victory" mode="Tournament" hero="Zed" kda="22/4/10" time="1d ago" score="+MVP" />
@@ -209,7 +258,7 @@ const ProfileView = ({ onEditProfile }) => {
 
 // --- Sub Components ---
 
-const SkillBar = ({ label, percent, color }) => (
+const SkillBar = ({ label, percent, color }: any) => (
   <div>
     <div className="flex justify-between text-xs mb-1">
       <span className="text-gray-400">{label}</span>
@@ -221,8 +270,8 @@ const SkillBar = ({ label, percent, color }) => (
   </div>
 );
 
-const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }) => (
-  <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 flex items-center gap-4">
+const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }: any) => (
+  <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 flex items-center gap-4 hover:border-white/20 transition-colors">
     <div className={`p-3 rounded-lg bg-white/5 ${color}`}>
       <Icon size={20} />
     </div>
@@ -233,8 +282,8 @@ const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }) => (
   </div>
 );
 
-const AchievementCard = ({ title, tier, icon, color }) => (
-  <div className="min-w-[140px] p-4 rounded-xl bg-gradient-to-br border border-white/5 relative overflow-hidden group hover:-translate-y-1 transition-transform">
+const AchievementCard = ({ title, tier, icon, color }: any) => (
+  <div className="min-w-[140px] p-4 rounded-xl bg-gradient-to-br border border-white/5 relative overflow-hidden group hover:-translate-y-1 transition-transform cursor-pointer">
     <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-10 group-hover:opacity-20 transition-opacity`}></div>
     <div className="text-3xl mb-3">{icon}</div>
     <div className="text-sm font-bold text-white mb-1">{title}</div>
@@ -242,8 +291,8 @@ const AchievementCard = ({ title, tier, icon, color }) => (
   </div>
 );
 
-const ProfileMatchRow = ({ result, mode, hero, kda, time, score, isWin = true }) => (
-  <div className="flex items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-colors">
+const ProfileMatchRow = ({ result, mode, hero, kda, time, score, isWin = true }: any) => (
+  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-colors gap-4 sm:gap-0">
      <div className="flex items-center gap-4">
        <div className={`w-1 h-12 rounded-full ${isWin ? 'bg-green-500' : 'bg-red-500'}`}></div>
        <div>
@@ -251,17 +300,19 @@ const ProfileMatchRow = ({ result, mode, hero, kda, time, score, isWin = true })
          <div className="text-xs text-gray-500">{mode}</div>
        </div>
      </div>
-     <div className="text-center">
-        <div className="font-bold text-white">{hero}</div>
-        <div className="text-xs text-gray-500">Hero</div>
-     </div>
-     <div className="text-center">
-        <div className="font-medium text-gray-300">{kda}</div>
-        <div className="text-xs text-gray-500">KDA</div>
-     </div>
-     <div className="text-right">
-        <div className={`font-bold ${isWin ? 'text-yellow-400' : 'text-gray-400'}`}>{score}</div>
-        <div className="text-xs text-gray-500">{time}</div>
+     <div className="flex w-full sm:w-auto justify-between sm:justify-end gap-8 md:gap-12">
+        <div className="text-left sm:text-center">
+           <div className="font-bold text-white">{hero}</div>
+           <div className="text-xs text-gray-500">Hero</div>
+        </div>
+        <div className="text-center">
+           <div className="font-medium text-gray-300">{kda}</div>
+           <div className="text-xs text-gray-500">KDA</div>
+        </div>
+        <div className="text-right">
+           <div className={`font-bold ${isWin ? 'text-yellow-400' : 'text-gray-400'}`}>{score}</div>
+           <div className="text-xs text-gray-500">{time}</div>
+        </div>
      </div>
   </div>
 );

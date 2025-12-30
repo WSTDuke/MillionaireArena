@@ -8,9 +8,26 @@ import {
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  // We can use location to determine active state if needed, though NavLink handles 'active' class automatically
-  // But our custom NavItem component needs an 'active' prop
   const location = useLocation();
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+
+  React.useEffect(() => {
+    const getData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setProfile(data);
+      }
+    };
+    getData();
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -74,6 +91,8 @@ const DashboardPage = () => {
         {/* User Mini Profile (Bottom Sidebar) */}
         <div className="p-4 border-t border-white/5 bg-neutral-900/50">
           <UserProfileDropup 
+            user={user}
+            profile={profile}
             onLogout={handleLogout} 
             onSettings={() => navigate('/dashboard/settings')} 
             onProfile={() => navigate('/dashboard/profile')} 
@@ -132,9 +151,11 @@ const NavItem = ({ icon: Icon, label, active, to }) => (
   </NavLink>
 );
 
-const UserProfileDropup = ({ onLogout, onSettings, onProfile }) => {
+const UserProfileDropup = ({ user, profile, onLogout, onSettings, onProfile }: any) => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
+
+  const displayName = profile?.display_name || profile?.full_name || user?.user_metadata?.full_name || 'User';
 
   return (
     <div className="relative">
@@ -172,7 +193,7 @@ const UserProfileDropup = ({ onLogout, onSettings, onProfile }) => {
           <img src="https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100" alt="User" className="w-full h-full rounded-full object-cover border-2 border-black" />
         </div>
         <div className="flex-1 overflow-hidden">
-          <h4 className="text-sm font-bold truncate">ShadowHunter</h4>
+          <h4 className="text-sm font-bold truncate">{displayName}</h4>
           <p className="text-xs text-gray-400">Level 42</p>
         </div>
         <div className="text-gray-500">

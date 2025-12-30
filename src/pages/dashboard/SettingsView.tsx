@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase'; // Đảm bảo đường dẫn đúng
 import { 
   User, Shield, Bell, Lock, Smartphone, Globe, 
   Volume2, Monitor, Save, CreditCard, Mail, Camera, Edit3 
 } from 'lucide-react';
-import Toast from '../../components/Toast';
+import Toast from '../../components/Toast'; // Đảm bảo đường dẫn đúng
 import type { ToastType } from '../../components/Toast';
+
+// --- Types ---
+interface ProfileData {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  description?: string | null; 
+  display_name?: string | null;
+}
 
 const SettingsView = () => {
   const [activeSection, setActiveSection] = useState('profile');
@@ -14,8 +23,9 @@ const SettingsView = () => {
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null);
 
   useEffect(() => {
-    console.log("SettingsView Mounted - Toast System Active");
+    console.log("SettingsView Mounted");
     const fetchUser = async () => {
+      // Chỉ lấy User Auth ở đây để xác thực phiên đăng nhập
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       setLoading(false);
@@ -27,10 +37,10 @@ const SettingsView = () => {
     setToast({ message, type });
   };
 
-  if (loading) return <div className="text-white">Loading...</div>;
+  if (loading) return <div className="text-white p-8">Đang tải dữ liệu...</div>;
 
   return (
-    <div className="animate-fade-in-up relative">
+    <div className="animate-fade-in-up relative pb-10">
       {/* Toast Notification */}
       {toast && (
         <Toast 
@@ -41,7 +51,7 @@ const SettingsView = () => {
       )}
 
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Cài đặt tài khoản</h1>
+        <h1 className="text-3xl font-bold mb-2 text-white">Cài đặt tài khoản</h1>
         <p className="text-gray-400">Quản lý thông tin cá nhân và tùy chỉnh trải nghiệm của bạn.</p>
       </div>
 
@@ -60,7 +70,6 @@ const SettingsView = () => {
             active={activeSection === 'security'} 
             onClick={() => setActiveSection('security')} 
           />
-         
           <SettingsTab 
             icon={Monitor} 
             label="Giao diện" 
@@ -73,7 +82,9 @@ const SettingsView = () => {
         <div className="lg:col-span-3">
           {activeSection === 'profile' && <ProfileSettings user={user} showToast={showToast} />}
           {activeSection === 'security' && <SecuritySettings user={user} showToast={showToast} />}
-          {/* Add other sections as needed */}
+          {activeSection === 'appearance' && (
+             <div className="text-gray-400 p-4 border border-white/10 rounded-xl">Chức năng đang phát triển...</div>
+          )}
         </div>
       </div>
     </div>
@@ -82,7 +93,7 @@ const SettingsView = () => {
 
 // --- Sub Components ---
 
-const SettingsTab = ({ icon: Icon, label, active, onClick }) => (
+const SettingsTab = ({ icon: Icon, label, active, onClick }: any) => (
   <button 
     onClick={onClick}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
@@ -96,23 +107,79 @@ const SettingsTab = ({ icon: Icon, label, active, onClick }) => (
   </button>
 );
 
-const ProfileSettings = ({ user, showToast }) => {
+const ProfileSettings = ({ user, showToast }: { user: any, showToast: any }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '');
-  const [phone, setPhone] = useState(user?.phone || '');
-  const [realName, setRealName] = useState(user?.user_metadata?.real_name || '');
-  const [bio, setBio] = useState('Pro Player | Rank Diamond | Looking for team');
-  
-  // Note: Just mocking save for now as we might need a dedicated profiles table for extended fields
-  const handleSaveProfile = async () => {
-    try {
-      const { error } = await supabase.auth.updateUser({
-        data: { 
-          full_name: fullName,
-          real_name: realName 
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
+  // State cho Form
+  const [fullName, setFullName] = useState('');
+  const [displayName, setDisplayName] = useState('');
+
+  const [description, setDescription] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // 1. Fetch data từ bảng 'public.profiles'
+  useEffect(() => {
+    const getProfile = async () => {
+      if (!user) return;
+      setLoadingProfile(true);
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+            console.warn('Lỗi lấy profile:', error.message);
         }
-      });
+
+        if (data) {
+          // Nếu có trong bảng profiles -> Dùng dữ liệu này
+          setFullName(data.full_name || '');
+          setDisplayName(data.display_name || '');
+          setAvatarUrl(data.avatar_url);
+          setDescription(data.description || ''); 
+        } else {
+          // Fallback: Chưa có row nào trong profiles -> Dùng metadata từ Auth
+          setFullName(user.user_metadata?.full_name || '');
+          setDisplayName(user.user_metadata?.display_name || '');
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+
+    getProfile();
+  }, [user]);
+  
+  // 2. Lưu data vào bảng 'public.profiles'
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    
+    try {
+      const updates = {
+        id: user.id, // Bắt buộc phải khớp ID user
+        full_name: fullName,
+        display_name: displayName,
+        description: description,
+        updated_at: new Date(),
+      };
+
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(updates); // Upsert: Có thì update, chưa có thì insert
+
       if (error) throw error;
+
+      // (Tùy chọn) Sync ngược lại Auth Metadata để các nơi khác dùng getUser() cũng thấy
+      await supabase.auth.updateUser({
+        data: { full_name: fullName }
+      });
+
       showToast('Cập nhật hồ sơ thành công!', 'success');
       setIsEditing(false);
     } catch (error: any) {
@@ -127,6 +194,8 @@ const ProfileSettings = ({ user, showToast }) => {
       setIsEditing(true);
     }
   };
+
+  if (loadingProfile) return <div className="text-gray-400">Đang tải thông tin hồ sơ...</div>;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -145,7 +214,7 @@ const ProfileSettings = ({ user, showToast }) => {
           <div className="relative">
             <div className="w-24 h-24 rounded-full bg-black p-1">
               <img 
-                src="https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100" 
+                src={avatarUrl || "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100"} 
                 alt="Avatar" 
                 className="w-full h-full rounded-full object-cover" 
               />
@@ -163,25 +232,28 @@ const ProfileSettings = ({ user, showToast }) => {
         <div className="space-y-4">
           <InputGroup 
             label="Tên hiển thị" 
-            value={fullName} 
-            onChange={(e: any) => setFullName(e.target.value)}
-            placeholder="Nhập tên của bạn"
+            value={displayName} 
+            onChange={(e: any) => setDisplayName(e.target.value)}
+            placeholder="Nickname (VD: Shadow)"
             disabled={!isEditing}
+            icon={User}
           />
           <InputGroup 
-            label="Tên thật" 
-            value={realName} 
-            onChange={(e: any) => setRealName(e.target.value)}
-            disabled={!isEditing} 
+            label="Họ và tên" 
+            value={fullName} 
+            onChange={(e: any) => setFullName(e.target.value)}
+            placeholder="Nguyễn Văn A"
+            disabled={!isEditing}
           />
         </div>
         <div className="space-y-4">
           <InputGroup label="Email" value={user?.email || ''} icon={Mail} disabled={true} />
-        <InputGroup 
-            label="Bio" 
-            value={bio} 
-            onChange={(e: any) => setBio(e.target.value)}
-            multiline 
+          
+          <InputGroup 
+            label="Giới thiệu" 
+            value={description} 
+            onChange={(e: any) => setDescription(e.target.value)}
+            placeholder="Mô tả ngắn về bạn..."
             disabled={!isEditing} 
           />
         </div>
@@ -202,7 +274,7 @@ const ProfileSettings = ({ user, showToast }) => {
             </>
           ) : (
              <>
-              <Edit3 size={18} /> Thay đổi thông tin
+              <Edit3 size={18} /> Chỉnh sửa
             </>
           )}
         </button>
@@ -211,35 +283,29 @@ const ProfileSettings = ({ user, showToast }) => {
   );
 };
 
-const SecuritySettings = ({ user, showToast }) => {
-  // State quản lý việc hiển thị Form
+const SecuritySettings = ({ user, showToast }: any) => {
   const [showChangePassword, setShowChangePassword] = useState(false);
-  
   const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Hàm reset form
   const resetForm = () => {
     setCurrentPassword('');
     setPassword('');
     setConfirmPassword('');
-    setShowChangePassword(false); // Đóng form
+    setShowChangePassword(false);
   };
 
   const handleUpdatePassword = async () => {
-    // Basic Validation
     if (!currentPassword || !password || !confirmPassword) {
        showToast('Vui lòng điền đầy đủ thông tin.', 'error');
        return;
     }
-
     if (password !== confirmPassword) {
       showToast('Mật khẩu xác nhận không khớp!', 'error');
       return;
     }
-    
     if (password.length < 6) {
       showToast('Mật khẩu mới phải có ít nhất 6 ký tự.', 'error');
       return;
@@ -253,9 +319,7 @@ const SecuritySettings = ({ user, showToast }) => {
         password: currentPassword,
       });
 
-      if (signInError) {
-        throw new Error('Mật khẩu hiện tại không đúng.');
-      }
+      if (signInError) throw new Error('Mật khẩu hiện tại không đúng.');
 
       // 2. Update Password
       const { error: updateError } = await supabase.auth.updateUser({ password: password });
@@ -263,7 +327,7 @@ const SecuritySettings = ({ user, showToast }) => {
       if (updateError) throw updateError;
       
       showToast('Đổi mật khẩu thành công!', 'success');
-      resetForm(); // Reset và đóng form khi thành công
+      resetForm();
       
     } catch (error: any) {
       showToast(error.message || 'Lỗi đổi mật khẩu.', 'error');
@@ -275,14 +339,12 @@ const SecuritySettings = ({ user, showToast }) => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="p-6 bg-neutral-900/50 border border-white/5 rounded-2xl">
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
           <Lock className="text-fuchsia-500" size={20} />
           Đổi mật khẩu
         </h3>
         
-        {/* LOGIC ẨN HIỆN FORM Ở ĐÂY */}
         {!showChangePassword ? (
-          // TRẠNG THÁI 1: CHƯA CLICK -> HIỆN NÚT MỞ
           <div>
             <p className="text-gray-400 text-sm mb-4">
               Nên sử dụng mật khẩu mạnh để bảo vệ tài khoản của bạn.
@@ -295,7 +357,6 @@ const SecuritySettings = ({ user, showToast }) => {
             </button>
           </div>
         ) : (
-          // TRẠNG THÁI 2: ĐÃ CLICK -> HIỆN FORM INPUT
           <div className="space-y-4 max-w-md animate-fade-in-up">
             <InputGroup 
               label="Mật khẩu hiện tại" 
@@ -341,7 +402,7 @@ const SecuritySettings = ({ user, showToast }) => {
       </div>
 
       <div className="p-6 bg-neutral-900/50 border border-white/5 rounded-2xl">
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
           <Shield className="text-green-500" size={20} />
           Bảo mật 2 lớp (2FA)
         </h3>
@@ -369,6 +430,7 @@ const InputGroup = ({ label, value, placeholder, onChange, type = "text", multil
         <textarea 
           defaultValue={value}
           placeholder={placeholder}
+          onChange={onChange}
           rows={3}
           disabled={disabled}
           className="w-full bg-transparent border-none outline-none text-white text-sm p-3 resize-none placeholder-gray-600"
