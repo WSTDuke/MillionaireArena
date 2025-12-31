@@ -129,11 +129,15 @@ export const SettingsPageSkeleton = () => (
 
       {/* Settings Content Area Skeleton */}
       <div className="lg:col-span-3 space-y-6">
-        {/* Banner & Avatar Skeleton */}
-        <div className="relative h-48 rounded-2xl overflow-hidden bg-neutral-900 border border-white/5">
-          <SkeletonBox className="absolute inset-0" />
-          <div className="absolute -bottom-12 left-8">
+        {/* Banner & Avatar Skeleton Container */}
+        <div className="relative mb-20">
+          <SkeletonBox className="h-48 rounded-2xl" />
+          <div className="absolute -bottom-12 left-8 flex items-end gap-4">
             <SkeletonBox className="w-24 h-24 rounded-full" />
+            <div className="mb-2 space-y-2">
+              <SkeletonBox className="h-6 w-32" />
+              <SkeletonBox className="h-4 w-48" />
+            </div>
           </div>
         </div>
 
@@ -169,11 +173,15 @@ export const SettingsPageSkeleton = () => (
 // Profile Settings Form Skeleton (for inline use in SettingsView)
 export const ProfileSettingsSkeleton = () => (
   <div className="space-y-6 animate-fade-in">
-    {/* Banner & Avatar Skeleton */}
-    <div className="relative h-48 rounded-2xl overflow-hidden bg-neutral-900 border border-white/5">
-      <SkeletonBox className="absolute inset-0" />
-      <div className="absolute -bottom-12 left-8">
+    {/* Banner & Avatar Skeleton Container */}
+    <div className="relative mb-20">
+      <SkeletonBox className="h-48 rounded-2xl" />
+      <div className="absolute -bottom-12 left-8 flex items-end gap-4">
         <SkeletonBox className="w-24 h-24 rounded-full" />
+        <div className="mb-2 space-y-2">
+          <SkeletonBox className="h-6 w-32" />
+          <SkeletonBox className="h-4 w-48" />
+        </div>
       </div>
     </div>
 

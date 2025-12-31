@@ -11,6 +11,7 @@ interface ProfileData {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
+  cover_url: string | null;
   description?: string | null;
   display_name?: string | null;
   created_at?: string;
@@ -67,7 +68,11 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
       <div className="relative mb-24">
         {/* Cover Image */}
         <div className="h-64 rounded-2xl overflow-hidden relative border border-white/5">
-          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center"></div>
+          <img 
+            src={profile?.cover_url || "https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"} 
+            className="w-full h-full object-cover"
+            alt="Cover"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent"></div>
         </div>
 

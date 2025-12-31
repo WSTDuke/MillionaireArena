@@ -148,7 +148,7 @@ const DashboardPage = () => {
 
         {/* Dashboard Content Scrollable */}
         <div className="p-8 h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar pb-20">
-          <Outlet />
+          <Outlet context={{ setProfile }} />
         </div>
       </main>
     </div>
@@ -257,7 +257,7 @@ const UserProfileDropup = ({
       >
         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-500 to-purple-600 p-[2px]">
           <img
-            src="https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100"
+            src={profile?.avatar_url || "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100"}
             alt="User"
             className="w-full h-full rounded-full object-cover border-2 border-black"
           />
