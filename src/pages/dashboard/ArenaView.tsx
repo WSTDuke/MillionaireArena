@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Swords, Trophy, Users, Zap, Star, Play, Lock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
 
 const ArenaView = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+
+  const handleStartMode = (mode: string) => {
+    navigate(`/dashboard/arena/lobby?mode=${mode}`);
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 500);
@@ -48,6 +54,7 @@ const ArenaView = () => {
           icon={Trophy}
           color="fuchsia"
           features={["Cấm/Chọn", "5v5 Competitive", "Tính điểm MMR"]}
+          onClick={() => handleStartMode('Ranked')}
         />
         
         {/* Normal Mode */}
@@ -58,6 +65,7 @@ const ArenaView = () => {
           icon={Swords}
           color="blue"
           features={["Chọn ẩn", "Thoải mái", "Không tính Rank"]}
+          onClick={() => handleStartMode('Normal')}
         />
 
         {/* Special/Event Mode */}
@@ -69,6 +77,7 @@ const ArenaView = () => {
           color="red"
           features={["Solo Free-for-all", "Nhịp độ cao", "Limited Time"]}
           isNew
+          onClick={() => handleStartMode('Deathmatch')}
         />
       </div>
 
@@ -148,7 +157,7 @@ const ArenaView = () => {
 
 // --- Sub Components ---
 
-const ModeCard = ({ title, description, image, icon: Icon, color, features, isNew }: any) => {
+const ModeCard = ({ title, description, image, icon: Icon, color, features, isNew, onClick }: any) => {
   const colorClasses: any = {
     fuchsia: "text-fuchsia-400 group-hover:text-fuchsia-300 bg-fuchsia-500",
     blue: "text-blue-400 group-hover:text-blue-300 bg-blue-500",
@@ -186,7 +195,13 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
           ))}
         </div>
 
-        <button className={`w-full py-3 rounded-xl font-bold text-white bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 transition-colors flex items-center justify-center gap-2 group-hover:bg-gradient-to-r ${color === 'fuchsia' ? 'from-fuchsia-600 to-purple-600' : color === 'red' ? 'from-red-600 to-orange-600' : 'from-blue-600 to-cyan-600'}`}>
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          className={`w-full py-3 rounded-xl font-bold text-white bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 transition-colors flex items-center justify-center gap-2 group-hover:bg-gradient-to-r ${color === 'fuchsia' ? 'from-fuchsia-600 to-purple-600' : color === 'red' ? 'from-red-600 to-orange-600' : 'from-blue-600 to-cyan-600'}`}
+        >
           <Play size={16} fill="currentColor" /> Bắt đầu
         </button>
       </div>
