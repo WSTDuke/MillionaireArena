@@ -1,8 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react'; // 1. Import useRef
 import { Trophy, Calendar, Users, DollarSign, Filter, Search, ArrowRight, Star } from 'lucide-react';
 
 const TournamentsView = () => {
   const [filter, setFilter] = useState('all');
+  
+  // 2. Khởi tạo Ref để đánh dấu vị trí muốn trượt tới
+  const tabsSectionRef = useRef<HTMLDivElement>(null);
+
+  // 3. Hàm xử lý hiệu ứng trượt
+  const handleScrollToTabs = () => {
+    if (tabsSectionRef.current) {
+      tabsSectionRef.current.scrollIntoView({ 
+        behavior: 'smooth', // <--- QUAN TRỌNG: Tạo hiệu ứng trượt mượt
+        block: 'start'      // Trượt để phần tử nằm ở đầu khung nhìn
+      });
+    }
+  };
 
   return (
     <div className="space-y-8 animate-fade-in-up">
@@ -43,14 +56,11 @@ const TournamentsView = () => {
              <span className="text-gray-300 text-sm">Official Tournament</span>
           </div>
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-4 max-w-3xl leading-tight">
-            Millionaire Championship Series
+            MillionMind Championship Series
           </h2>
           <div className="flex flex-wrap gap-6 mb-8 text-sm md:text-base">
             <div className="flex items-center gap-2 text-gray-300">
               <Calendar size={18} className="text-fuchsia-500" /> 15/01/2025 - 30/01/2025
-            </div>
-            <div className="flex items-center gap-2 text-gray-300">
-              <DollarSign size={18} className="text-green-500" /> Tổng giải thưởng: <span className="text-green-400 font-bold text-lg">$50,000</span>
             </div>
             <div className="flex items-center gap-2 text-gray-300">
               <Users size={18} className="text-blue-500" /> 32 Đội tham gia
@@ -58,7 +68,11 @@ const TournamentsView = () => {
           </div>
           
           <div className="flex gap-4">
-            <button className="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] flex items-center gap-2">
+            {/* 4. Gắn hàm onClick vào nút Đăng ký */}
+            <button 
+              onClick={handleScrollToTabs}
+              className="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)] flex items-center gap-2"
+            >
               Đăng ký ngay <ArrowRight size={20} />
             </button>
             <button className="px-8 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold rounded-xl hover:bg-white/20 transition-all">
@@ -69,7 +83,11 @@ const TournamentsView = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-white/10 pb-1 overflow-x-auto">
+      {/* 5. Gắn ref vào đây. Class scroll-mt-24 giúp khi trượt xuống nó cách mép trên một chút */}
+      <div 
+        ref={tabsSectionRef} 
+        className="flex gap-4 border-b border-white/10 pb-1 overflow-x-auto scroll-mt-24"
+      >
         {['all', 'upcoming', 'ongoing', 'completed'].map((tab) => (
           <button 
             key={tab}

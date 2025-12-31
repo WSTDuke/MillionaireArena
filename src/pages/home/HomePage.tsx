@@ -15,9 +15,10 @@ const MillionArena = () => {
           {/* Logo */}
           <div className="flex items-center gap-2 cursor-pointer group">
             <Swords className="w-8 h-8 text-fuchsia-500 group-hover:rotate-12 transition-transform duration-300" />
-            <span className="text-2xl font-bold bg-gradient-to-r from-fuchsia-500 via-purple-500 to-indigo-500 bg-clip-text text-transparent">
-              MillionArena
-            </span>
+            <div className="text-2xl font-bold">
+              <span className="text-white">MillionMind</span>
+              <span className="text-purple-500">Arena</span>
+            </div>
           </div>
 
           {/* Nav Links (Hidden on mobile for simplicity) */}
@@ -183,7 +184,7 @@ const MillionArena = () => {
           </div>
           
           <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-gray-600">
-            <p>&copy; 2024 MillionArena Inc. All rights reserved.</p>
+            <p>&copy; 2024 MillionMindArena Inc. All rights reserved.</p>
             <div className="flex gap-4 mt-4 md:mt-0">
               <a href="#" className="hover:text-white">Privacy Policy</a>
               <a href="#" className="hover:text-white">Terms of Service</a>

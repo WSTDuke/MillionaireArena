@@ -53,12 +53,6 @@ const SignUpPage = () => {
       {/* --- CỘT TRÁI: FORM AREA --- */}
       <div className="w-full lg:w-1/2 flex flex-col justify-center px-8 sm:px-16 lg:px-24 py-12 relative z-10 bg-black">
         
-        {/* Logo */}
-        <div className="absolute top-8 left-8 sm:left-16 lg:left-24 flex items-center gap-2 cursor-pointer group">
-          <Swords className="w-6 h-6 text-fuchsia-500 group-hover:rotate-12 transition-transform duration-300" />
-          <span className="text-xl font-bold tracking-tight">MillionArena</span>
-        </div>
-
         <div className="max-w-md w-full mx-auto mt-12 min-h-[500px] flex flex-col justify-center">
           
           {/* --- LOGIC HIỂN THỊ: NẾU ĐÃ SUBMIT -> HIỆN VERIFY, NẾU CHƯA -> HIỆN FORM --- */}

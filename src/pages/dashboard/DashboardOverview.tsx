@@ -3,12 +3,13 @@ import { Trophy, Swords, TrendingUp, Clock, Plus, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const DashboardOverview = () => {
+
   return (
     <>
       {/* Welcome Section */}
       <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-1">Xin chào, ShadowHunter! 👋</h1>
+          <h1 className="text-3xl font-bold mb-1">Bắt đầu hành trình của bạn!</h1>
           <p className="text-gray-400">Hôm nay là một ngày tuyệt vời để leo hạng.</p>
         </div>
        <Link to="/dashboard/arena">

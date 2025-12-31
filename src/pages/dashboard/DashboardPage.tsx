@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useNavigate, NavLink, Outlet, useLocation, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
   LayoutDashboard, Trophy, Swords, Settings, Bell, 
@@ -48,13 +48,14 @@ const DashboardPage = () => {
       {/* --- SIDEBAR --- */}
       <aside className="w-64 hidden lg:flex flex-col border-r border-white/10 bg-neutral-950/50 backdrop-blur-xl h-screen fixed top-0 left-0 z-50">
         {/* Logo */}
-        <div className="h-20 flex items-center gap-3 px-6 border-b border-white/5">
-          <Swords className="w-8 h-8 text-fuchsia-500" />
-          <span className="text-xl font-bold bg-gradient-to-r from-fuchsia-500 to-purple-500 bg-clip-text text-transparent">
-            MillionArena
-          </span>
+       <Link to="/dashboard">
+        <div className="h-20 flex items-center gap-3 px-6 border-b border-white/5 justify-center">
+            <div className="text-xl font-bold">
+            <span className="text-white">MillionMind</span>
+            <span className="text-fuchsia-500">Arena</span>
+          </div>
         </div>
-
+      </Link>
         {/* Navigation */}
         <nav className='flex-1 justify-between h-full'>
           <div className="flex-1 space-y-2 p-4">
@@ -108,9 +109,8 @@ const DashboardPage = () => {
         {/* Header */}
         <header className="h-20 flex items-center justify-between px-8 border-b border-white/10 sticky top-0 bg-black/80 backdrop-blur-md z-40">
           <div className="flex items-center gap-4 text-gray-400">
-            <h2 className="text-xl font-bold text-white hidden md:block">Dashboard</h2>
+          <Swords className="w-8 h-8 text-fuchsia-500 group-hover:rotate-12 transition-transform duration-300" />
           </div>
-
           <div className="flex items-center gap-6">
             {/* Search Bar */}
             <div className="hidden md:flex items-center bg-neutral-900 border border-white/10 rounded-full px-4 py-2 w-64 focus-within:border-fuchsia-500/50 transition-colors">
