@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Trophy, Swords, TrendingUp, Clock, Plus, Users } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trophy, Swords, TrendingUp, Clock, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
 
@@ -32,10 +32,10 @@ const DashboardOverview = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard icon={Trophy} label="Xếp hạng hiện tại" value="Diamond III" subValue="Top 2.5% Server" color="text-yellow-400" gradient="from-yellow-500/20 to-orange-500/5" />
-        <StatCard icon={Swords} label="Tỉ lệ thắng" value="68.5%" subValue="+2.4% tuần này" color="text-green-400" gradient="from-green-500/20 to-emerald-500/5" />
-        <StatCard icon={TrendingUp} label="Tổng thu nhập" value="$12,450" subValue="+$540 hôm qua" color="text-fuchsia-400" gradient="from-fuchsia-500/20 to-purple-500/5" />
-        <StatCard icon={Clock} label="Giờ chơi" value="1,240h" subValue="Hardcore Player" color="text-blue-400" gradient="from-blue-500/20 to-cyan-500/5" />
+        <StatCard icon={Trophy} label="Xếp hạng hiện tại" value="--" subValue="-- Server" color="text-yellow-400" gradient="from-yellow-500/20 to-orange-500/5" />
+        <StatCard icon={Swords} label="Tỉ lệ thắng" value="0%" subValue="-- tuần này" color="text-green-400" gradient="from-green-500/20 to-emerald-500/5" />
+        <StatCard icon={TrendingUp} label="Tổng thu nhập" value="$0" subValue="-- hôm qua" color="text-fuchsia-400" gradient="from-fuchsia-500/20 to-purple-500/5" />
+        <StatCard icon={Clock} label="Giờ chơi" value="0h" subValue="New Player" color="text-blue-400" gradient="from-blue-500/20 to-cyan-500/5" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -43,22 +43,6 @@ const DashboardOverview = () => {
         {/* Left Column (Main) */}
         <div className="xl:col-span-2 space-y-8">
           
-          {/* Live Tournament Banner */}
-          <div className="relative rounded-2xl overflow-hidden border border-white/10 group h-64">
-            <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center transition-transform duration-700 group-hover:scale-105"></div>
-            <div className="absolute inset-0 bg-gradient-to-r from-black via-black/60 to-transparent"></div>
-            <div className="absolute top-4 left-4 bg-red-600 px-3 py-1 rounded text-xs font-bold animate-pulse text-white">LIVE</div>
-            
-            <div className="relative z-10 h-full flex flex-col justify-end p-8">
-              <h3 className="text-3xl font-bold mb-2">Million Major: Winter 2024</h3>
-              <p className="text-gray-300 mb-6 max-w-lg">Giải đấu lớn nhất mùa đông đã khởi tranh. Xem trực tiếp hoặc tham gia vòng loại mở rộng ngay bây giờ.</p>
-              <div className="flex gap-4">
-                <button className="px-5 py-2 bg-white text-black font-bold rounded hover:bg-gray-200 transition-colors">Xem Stream</button>
-                <button className="px-5 py-2 bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold rounded hover:bg-white/20 transition-colors">Chi tiết giải</button>
-              </div>
-            </div>
-          </div>
-
           {/* Recent Matches History */}
           <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
@@ -66,10 +50,7 @@ const DashboardOverview = () => {
               <button className="text-sm text-fuchsia-400 hover:text-fuchsia-300">Xem tất cả</button>
             </div>
             <div className="space-y-4">
-              <MatchRow result="Win" score="15 - 3" map="Cyber City" kda="18/4/5" date="2 giờ trước" money="+$50" />
-              <MatchRow result="Loss" score="12 - 13" map="Desert Storm" kda="12/10/2" date="5 giờ trước" money="-$20" />
-              <MatchRow result="Win" score="15 - 8" map="Neon Lab" kda="24/2/8" date="1 ngày trước" money="+$75" />
-              <MatchRow result="Win" score="15 - 0" map="Cyber City" kda="15/0/4" date="1 ngày trước" money="+$40" />
+              <MatchRow mode="Solo Ranked" result="Victory" score="24/4/12" time="20m" xp="+340" date="2h ago" />
             </div>
           </div>
         </div>
@@ -84,18 +65,11 @@ const DashboardOverview = () => {
               Bảng vàng Top 5
             </h3>
             <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map((rank) => (
-                <div key={rank} className="flex items-center gap-3 p-2 hover:bg-white/5 rounded-lg transition-colors cursor-pointer group">
-                  <div className={`w-6 h-6 flex items-center justify-center font-bold text-sm rounded ${rank === 1 ? 'bg-yellow-500 text-black' : rank === 2 ? 'bg-gray-400 text-black' : rank === 3 ? 'bg-orange-700 text-white' : 'text-gray-500 bg-white/5'}`}>
-                    {rank}
-                  </div>
-                  <img src={`https://i.pravatar.cc/150?img=${rank + 10}`} alt="Avt" className="w-8 h-8 rounded-full" />
-                  <div className="flex-1">
-                    <div className="text-sm font-bold group-hover:text-fuchsia-400 transition-colors">Player_{rank}99</div>
-                    <div className="text-xs text-gray-500">2,500 MMR</div>
-                  </div>
-                </div>
-              ))}
+              <LeaderboardRow rank={1} name="CyberNinja" level={74} score="2,840" isTop />
+              <LeaderboardRow rank={2} name="DragonSlayer" level={68} score="2,720" />
+              <LeaderboardRow rank={3} name="MysticQueen" level={62} score="2,590" />
+              <LeaderboardRow rank={4} name="ShadowHunter" level={59} score="2,450" />
+              <LeaderboardRow rank={5} name="IronViking" level={55} score="2,310" />
             </div>
             <button className="w-full mt-4 py-2 text-sm text-gray-400 border border-white/10 rounded hover:bg-white/5 hover:text-white transition-colors">
               Xem bảng xếp hạng đầy đủ
@@ -109,9 +83,7 @@ const DashboardOverview = () => {
               Bạn bè Online (3)
             </h3>
             <div className="space-y-3">
-              <FriendRow name="DragonSlayer" status="In Match" statusColor="text-yellow-500" />
-              <FriendRow name="NoobMaster69" status="Online" statusColor="text-green-500" />
-              <FriendRow name="ProGamervn" status="Lobby" statusColor="text-blue-500" />
+              <FriendRow name="Alex Johnson" status="In Lobby" avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" />
             </div>
           </div>
 
@@ -121,7 +93,7 @@ const DashboardOverview = () => {
   );
 };
 
-const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }) => (
+const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }: any) => (
   <div className={`p-6 rounded-2xl bg-neutral-900/80 border border-white/5 relative overflow-hidden group hover:border-white/10 transition-all`}>
     <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${gradient} rounded-full blur-[40px] -mr-10 -mt-10 transition-opacity opacity-50 group-hover:opacity-100`}></div>
     <div className="relative z-10">
@@ -135,43 +107,58 @@ const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }) => (
   </div>
 );
 
-const MatchRow = ({ result, score, map, kda, date, money }) => (
-  <div className="flex items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-colors group">
+const MatchRow = ({ mode, result, score, time, xp, date }: any) => (
+  <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 transition-colors group">
     <div className="flex items-center gap-4">
-      <div className={`w-1 h-12 rounded-full ${result === 'Win' ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-gray-600'}`}></div>
+      <div className={`w-2 h-10 rounded-full ${result === 'Victory' ? 'bg-green-500' : 'bg-red-500'}`}></div>
       <div>
-        <div className={`font-bold text-lg ${result === 'Win' ? 'text-green-400' : 'text-gray-400'}`}>{result.toUpperCase()}</div>
-        <div className="text-xs text-gray-500">{map}</div>
+        <div className="font-bold text-white mb-0.5">{mode}</div>
+        <div className="text-xs text-gray-500">{date} • {time}</div>
       </div>
     </div>
-    <div className="text-center hidden sm:block">
-      <div className="font-bold text-white tracking-wider">{score}</div>
-      <div className="text-xs text-gray-500">Score</div>
-    </div>
-    <div className="text-center hidden sm:block">
-      <div className="font-medium text-gray-300">{kda}</div>
-      <div className="text-xs text-gray-500">K/D/A</div>
-    </div>
-    <div className="text-right">
-      <div className={`font-bold ${money.includes('+') ? 'text-yellow-400' : 'text-gray-400'}`}>{money}</div>
-      <div className="text-xs text-gray-500">{date}</div>
+    <div className="flex items-center gap-8">
+      <div className="text-center">
+        <div className={`font-bold ${result === 'Victory' ? 'text-green-400' : 'text-red-400'}`}>{result}</div>
+        <div className="text-xs text-gray-500">{score}</div>
+      </div>
+      <div className="text-right min-w-[60px]">
+        <div className="text-fuchsia-400 font-bold">{xp} XP</div>
+      </div>
     </div>
   </div>
 );
 
-const FriendRow = ({ name, status, statusColor }) => (
-  <div className="flex items-center gap-3">
-    <div className="relative">
-      <img src={`https://i.pravatar.cc/150?u=${name}`} alt={name} className="w-8 h-8 rounded-full" />
-      <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-black ${status === 'Online' ? 'bg-green-500' : status === 'In Match' ? 'bg-yellow-500' : 'bg-blue-500'}`}></div>
+const LeaderboardRow = ({ rank, name, level, score, isTop }: any) => (
+  <div className={`flex items-center justify-between p-3 rounded-xl transition-colors ${isTop ? 'bg-yellow-500/10 border border-yellow-500/20' : 'hover:bg-white/5 border border-transparent'}`}>
+    <div className="flex items-center gap-3">
+      <span className={`w-6 text-center font-bold ${rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-gray-300' : rank === 3 ? 'text-amber-600' : 'text-gray-500'}`}>{rank}</span>
+      <div>
+        <div className="font-bold text-sm text-white">{name}</div>
+        <div className="text-[10px] text-gray-500">LVL {level}</div>
+      </div>
     </div>
-    <div className="flex-1">
-      <div className="text-sm font-bold text-white hover:text-fuchsia-400 cursor-pointer transition-colors">{name}</div>
-      <div className={`text-xs ${statusColor}`}>{status}</div>
+    <div className="text-right">
+       <div className="text-sm font-bold text-white">{score}</div>
+       <div className="text-[10px] text-gray-500 font-medium">MMR</div>
     </div>
-    <button className="p-1.5 rounded bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white">
-      <Plus size={14} />
-    </button>
+  </div>
+);
+
+const FriendRow = ({ name, status, avatar }: any) => (
+  <div className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
+    <div className="flex items-center gap-3">
+      <div className="relative">
+        <img src={avatar} alt={name} className="w-10 h-10 rounded-full bg-neutral-800" />
+        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-neutral-900 rounded-full"></div>
+      </div>
+      <div>
+        <div className="text-sm font-bold text-white">{name}</div>
+        <div className="text-xs text-green-500">{status}</div>
+      </div>
+    </div>
+    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+      <Clock size={14} />
+    </div>
   </div>
 );
 

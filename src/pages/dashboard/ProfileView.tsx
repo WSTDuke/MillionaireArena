@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Link } from 'react-router-dom';
 import { 
   Trophy, Swords, Target, Clock, Zap, Medal, 
-  Share2, Edit3, MapPin, Calendar, Award, Globe, User as UserIcon
+  Share2, Edit3, Calendar, Award
 } from 'lucide-react';
 import { ProfilePageSkeleton } from '../../components/LoadingSkeletons';
 
@@ -31,11 +31,15 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
 
         if (user) {
           // 2. Lấy thông tin chi tiết từ bảng profiles
-          const { data, error } = await supabase
+          const { data, error: profileError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', user.id)
             .single();
+
+          if (profileError && profileError.code !== 'PGRST116') {
+            console.warn('Profile fetch error:', profileError.message);
+          }
           
           if (data) {
             setProfile(data);
@@ -58,7 +62,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   const displayName = profile?.display_name || user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'User';
   const fullName = profile?.full_name || user?.user_metadata?.full_name;
   
-  const avatarSrc = profile?.avatar_url || "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=200&h=200";
+  const avatarSrc = profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback";
   const userDescription = profile?.description || "Chưa có giới thiệu bản thân.";
   const joinDate = user?.created_at ? new Date(user.created_at).getFullYear() : '2025';
 
@@ -69,7 +73,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
         {/* Cover Image */}
         <div className="h-64 rounded-2xl overflow-hidden relative border border-white/5">
           <img 
-            src={profile?.cover_url || "https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"} 
+            src={profile?.cover_url || "https://images.unsplash.com/photo-1550745165-9bc0b252723f?q=80&w=2070&auto=format&fit=crop"} 
             className="w-full h-full object-cover"
             alt="Cover"
           />
@@ -89,8 +93,8 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                 />
               </div>
             </div>
-            <div className="absolute -bottom-2 -right-2 bg-yellow-500 text-black px-2 py-0.5 rounded-full text-xs font-bold border-2 border-black shadow-lg">
-              LVL 42
+            <div className="absolute -bottom-2 -right-2 bg-gray-500 text-white px-2 py-0.5 rounded-full text-xs font-bold border-2 border-black shadow-lg">
+              LVL 1
             </div>
           </div>
 
@@ -115,8 +119,8 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                         <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
                             <Calendar size={12} /> Gia nhập {joinDate}
                         </span>
-                        <span className="text-fuchsia-400 font-bold px-2 py-1 bg-fuchsia-500/10 rounded-md border border-fuchsia-500/20">
-                            Pro Player
+                        <span className="text-gray-400 font-bold px-2 py-1 bg-white/5 rounded-md border border-white/10">
+                            New Player
                         </span>
                     </div>
                 </div>
@@ -165,8 +169,8 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                     <path className="text-fuchsia-500" strokeDasharray="85, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="2" />
                  </svg>
               </div>
-              <div className="text-2xl font-bold text-white">Diamond III</div>
-              <div className="text-sm text-gray-400">2,450 MMR</div>
+              <div className="text-2xl font-bold text-white">Unranked</div>
+              <div className="text-sm text-gray-400">0 MMR</div>
             </div>
           </div>
 
@@ -185,7 +189,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
               </li>
               <li className="flex justify-between">
                 <span>Team</span>
-                <span className="text-white hover:text-fuchsia-400 cursor-pointer">Phoenix Fire</span>
+                <span className="text-gray-500 italic">Chưa tham gia Clan</span>
               </li>
             </ul>
           </div>
@@ -211,24 +215,17 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
               <button className="text-xs text-fuchsia-400 hover:text-fuchsia-300 transition-colors">Xem tất cả</button>
             </div>
             <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
-              <AchievementCard title="MVP Mùa giải" tier="Legendary" icon="👑" color="from-yellow-500 to-orange-600" />
-              <AchievementCard title="Bách chiến" tier="Epic" icon="⚔️" color="from-red-500 to-pink-600" />
-              <AchievementCard title="Nhà từ thiện" tier="Rare" icon="💎" color="from-blue-500 to-cyan-600" />
-              <AchievementCard title="Tay bắn tỉa" tier="Epic" icon="🎯" color="from-purple-500 to-indigo-600" />
-              <AchievementCard title="Chiến thuật gia" tier="Common" icon="🧠" color="from-gray-500 to-slate-600" />
+              <div className="text-center w-full py-4 text-gray-500 italic text-sm">Chưa có thành tựu...</div>
             </div>
           </div>
 
           {/* Match History */}
           <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-white">
-               <Zap className="text-fuchsia-500" size={20} /> Lịch sử đấu (Mock Data)
+               <Zap className="text-fuchsia-500" size={20} /> Lịch sử đấu
             </h3>
             <div className="space-y-4">
-               <ProfileMatchRow result="Victory" mode="Ranked 5v5" hero="Yasuo" ratio="15 : 8" time="2h ago" score="+25 MMR" />
-               <ProfileMatchRow result="Defeat" mode="Ranked 5v5" hero="Yone" ratio="5 : 2" time="5h ago" score="-18 MMR" isWin={false} />
-               <ProfileMatchRow result="Victory" mode="Tournament" hero="Zed" ratio="22 : 10" time="1d ago" score="+MVP" />
-               <ProfileMatchRow result="Victory" mode="Normal" hero="Lee Sin" ratio="12 : 15" time="2d ago" score="+10 MMR" />
+              <div className="text-center py-10 text-gray-500 italic text-sm">Chưa có lịch sử đấu...</div>
             </div>
           </div>
 
@@ -251,33 +248,5 @@ const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }: any) =>
   </div>
 );
 
-const AchievementCard = ({ title, tier, icon, color }: any) => (
-  <div className="min-w-[140px] p-4 rounded-xl bg-gradient-to-br border border-white/5 relative overflow-hidden group hover:-translate-y-1 transition-transform cursor-pointer">
-    <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-10 group-hover:opacity-20 transition-opacity`}></div>
-    <div className="text-3xl mb-3">{icon}</div>
-    <div className="text-sm font-bold text-white mb-1">{title}</div>
-    <div className="text-xs text-gray-400">{tier}</div>
-  </div>
-);
-
-const ProfileMatchRow = ({ result, mode, ratio, time, score, isWin = true }: any) => (
-  <div className="flex flex-cols-3 sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-colors gap-4 sm:gap-0">
-     <div className="flex items-center gap-4">
-       <div className={`w-1 h-12 rounded-full ${isWin ? 'bg-green-500' : 'bg-red-500'}`}></div>
-       <div>
-         <div className={`font-bold ${isWin ? 'text-green-400' : 'text-red-400'}`}>{result}</div>
-         <div className="text-xs text-gray-500">{mode}</div>
-       </div>
-     </div>
-        <div className="text-left sm:text-center">
-           <div className="font-bold text-white">{ratio}</div>
-           <div className="text-xs text-gray-500">Ratio</div>
-        </div>
-        <div className="text-right">
-           <div className={`font-bold ${isWin ? 'text-yellow-400' : 'text-gray-400'}`}>{score}</div>
-           <div className="text-xs text-gray-500">{time}</div>
-        </div>
-  </div>
-);
 
 export default ProfileView;

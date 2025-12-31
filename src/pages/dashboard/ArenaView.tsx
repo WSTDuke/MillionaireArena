@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Swords, Trophy, Users, Zap, Clock, Star, Play, Lock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Swords, Trophy, Users, Zap, Star, Play, Lock } from 'lucide-react';
 import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
 
 const ArenaView = () => {
@@ -27,13 +27,13 @@ const ArenaView = () => {
            <div className="flex items-center gap-2">
              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
              <span className="text-sm font-bold text-gray-300">Online:</span>
-             <span className="text-sm font-bold text-white">12,450</span>
+             <span className="text-sm font-bold text-white">0</span>
            </div>
            <div className="w-px h-4 bg-white/10"></div>
            <div className="flex items-center gap-2">
              <Zap size={14} className="text-yellow-500" />
              <span className="text-sm font-bold text-gray-300">Matching:</span>
-             <span className="text-sm font-bold text-green-400">~15s</span>
+             <span className="text-sm font-bold text-green-400">--</span>
            </div>
         </div>
       </div>
@@ -99,10 +99,6 @@ const ArenaView = () => {
             {/* List */}
             <div className="divide-y divide-white/5">
               <LobbyRow name="Train team tối nay" mode="5v5" map="Cyber City" players="8/10" isPrivate />
-              <LobbyRow name="Giao lưu anh em HN" mode="ARAM" map="Iron Bridge" players="4/10" />
-              <LobbyRow name="Tuyển người leo rank" mode="Ranked" map="Summoners" players="3/5" />
-              <LobbyRow name="Test tướng mới" mode="Draft" map="Training" players="1/2" />
-              <LobbyRow name="Giải trí cuối tuần" mode="Deathmatch" map="Ruins" players="15/20" />
             </div>
           </div>
         </div>
@@ -119,25 +115,25 @@ const ArenaView = () => {
                  <Trophy className="text-yellow-500" size={32} />
                </div>
                <div>
-                 <div className="text-2xl font-bold text-white">Diamond III</div>
-                 <div className="text-sm text-gray-400">Kết thúc trong: 14 ngày</div>
+                  <div className="text-2xl font-bold text-white">Unranked</div>
+                  <div className="text-sm text-gray-400">Chưa bắt đầu</div>
                </div>
              </div>
              
-             <div className="space-y-3">
-               <div className="flex justify-between text-sm">
-                 <span className="text-gray-400">Thắng</span>
-                 <span className="text-green-400 font-bold">142</span>
-               </div>
-               <div className="flex justify-between text-sm">
-                 <span className="text-gray-400">Thua</span>
-                 <span className="text-red-400 font-bold">64</span>
-               </div>
-               <div className="w-full bg-black h-2 rounded-full overflow-hidden mt-2">
-                 <div className="bg-fuchsia-500 h-full w-[68%]"></div>
-               </div>
-               <div className="text-center text-xs text-gray-500 mt-1">Tỉ lệ thắng: 68%</div>
-             </div>
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Thắng</span>
+                  <span className="text-green-400 font-bold">0</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Thua</span>
+                  <span className="text-red-400 font-bold">0</span>
+                </div>
+                <div className="w-full bg-black h-2 rounded-full overflow-hidden mt-2">
+                  <div className="bg-fuchsia-500 h-full w-[0%]"></div>
+                </div>
+                <div className="text-center text-xs text-gray-500 mt-1">Tỉ lệ thắng: 0%</div>
+              </div>
              
              <button className="w-full mt-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-fuchsia-900/20">
                Xem bảng xếp hạng
@@ -197,6 +193,7 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
     </div>
   );
 }
+
 
 const LobbyRow = ({ name, mode, map, players, isPrivate }: any) => (
   <div className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-white/5 transition-colors cursor-pointer group">

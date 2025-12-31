@@ -257,14 +257,14 @@ const UserProfileDropup = ({
       >
         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-500 to-purple-600 p-[2px]">
           <img
-            src={profile?.avatar_url || "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100"}
+            src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"}
             alt="User"
             className="w-full h-full rounded-full object-cover border-2 border-black"
           />
         </div>
         <div className="flex-1 overflow-hidden">
           <h4 className="text-sm font-bold truncate">{displayName}</h4>
-          <p className="text-xs text-gray-400">Level 42</p>
+          <p className="text-xs text-gray-400">Hạng: --</p>
         </div>
         <div className="text-gray-500">
           <ChevronRight

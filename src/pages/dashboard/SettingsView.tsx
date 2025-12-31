@@ -1,12 +1,13 @@
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { supabase } from '../../lib/supabase'; // Đảm bảo đường dẫn đúng
+import { supabase } from '../../lib/supabase';
 import { 
-  User, Shield, Bell, Lock, Smartphone, Globe, 
-  Volume2, Monitor, Save, CreditCard, Mail, Camera, Edit3 
+  User, Shield, Lock, Monitor, Save, Mail, Camera, Edit3 
 } from 'lucide-react';
-import Toast from '../../components/Toast'; // Đảm bảo đường dẫn đúng
+import Toast from '../../components/Toast';
 import type { ToastType } from '../../components/Toast';
 import { ProfileSettingsSkeleton } from '../../components/LoadingSkeletons';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 // --- Types ---
 interface ProfileData {
@@ -15,12 +16,20 @@ interface ProfileData {
   avatar_url: string | null;
   description?: string | null; 
   display_name?: string | null;
+  cover_url?: string | null;
 }
 
 const SettingsView = () => {
   const { setProfile }: any = useOutletContext();
+  // for SettingsView's body doesn't match the new signature.
+  // I will keep the original signature for SettingsView and its internal state
+  // for showToast, as the instruction's snippet for SettingsView's body
+  // still uses `setToast` and `toast` internally.
+  // The instruction's snippet for SettingsView's signature seems to be for a different component or a partial change.
+  // I will proceed with the import changes and type fixes for the existing structure.
+
   const [activeSection, setActiveSection] = useState('profile');
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null); // Fixed 'any' type
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null);
 
@@ -35,7 +44,7 @@ const SettingsView = () => {
     fetchUser();
   }, []);
 
-  const showToast = (message: string, type: ToastType = 'success') => {
+  const handleShowToast = (message: string, type: ToastType = 'success') => {
     setToast({ message, type });
   };
 
@@ -81,8 +90,8 @@ const SettingsView = () => {
 
         {/* Settings Content Area */}
         <div className="lg:col-span-3">
-          {activeSection === 'profile' && <ProfileSettings user={user} showToast={showToast} setSidebarProfile={setProfile} />}
-          {activeSection === 'security' && <SecuritySettings user={user} showToast={showToast} />}
+          {activeSection === 'profile' && <ProfileSettings user={user} showToast={handleShowToast} setSidebarProfile={setProfile} />}
+          {activeSection === 'security' && <SecuritySettings user={user} showToast={handleShowToast} />}
           {activeSection === 'appearance' && (
              <div className="text-gray-400 p-4 border border-white/10 rounded-xl">Chức năng đang phát triển...</div>
           )}
@@ -108,7 +117,7 @@ const SettingsTab = ({ icon: Icon, label, active, onClick }: any) => (
   </button>
 );
 
-const ProfileSettings = ({ user, showToast }: { user: any, showToast: any }) => {
+const ProfileSettings = ({ user, showToast, setSidebarProfile }: { user: any, showToast: any, setSidebarProfile?: any }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
@@ -121,8 +130,8 @@ const ProfileSettings = ({ user, showToast }: { user: any, showToast: any }) => 
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const avatarInputRef = React.useRef<HTMLInputElement>(null);
-  const coverInputRef = React.useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   // 1. Fetch data từ bảng 'public.profiles'
   useEffect(() => {
@@ -273,7 +282,7 @@ const ProfileSettings = ({ user, showToast }: { user: any, showToast: any }) => 
         {/* Banner */}
         <div className="relative h-48 rounded-2xl overflow-hidden bg-neutral-900 border border-white/5 group">
           <img 
-            src={coverUrl || "https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"} 
+            src={coverUrl || "https://images.unsplash.com/photo-1550745165-9bc0b252723f?q=80&w=2070&auto=format&fit=crop"} 
             className="w-full h-full object-cover opacity-50"
             alt="Cover"
           />
@@ -295,7 +304,7 @@ const ProfileSettings = ({ user, showToast }: { user: any, showToast: any }) => 
           <div className="relative">
             <div className="w-24 h-24 rounded-full bg-neutral-900 p-1 ring-4 ring-neutral-950">
               <img 
-                src={avatarUrl || "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&q=80&w=100&h=100"} 
+                src={avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} 
                 alt="Avatar" 
                 className="w-full h-full rounded-full object-cover" 
               />

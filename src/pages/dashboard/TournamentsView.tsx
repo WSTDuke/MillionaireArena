@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react'; // 1. Import useRef
-import { Trophy, Calendar, Users, DollarSign, Filter, Search, ArrowRight, Star } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Trophy, Calendar, Users, DollarSign, Filter, Search, ArrowRight } from 'lucide-react';
 import { TournamentsPageSkeleton } from '../../components/LoadingSkeletons';
 
 const TournamentsView = () => {
@@ -120,42 +120,6 @@ const TournamentsView = () => {
           slots="16/16"
           status="Ongoing"
           tags={["5v5", "Weekly"]}
-        />
-        <TournamentCard 
-          image="https://images.unsplash.com/photo-1538481199705-c710c4e965fc?q=80&w=1965&auto=format&fit=crop"
-          title="Solo King: Yasuo Only"
-          date="08 Jan, 2025"
-          prize="$200"
-          slots="24/64"
-          status="Upcoming"
-          tags={["1v1", "Fun"]}
-        />
-        <TournamentCard 
-          image="https://images.unsplash.com/photo-1509198397868-475647b2a1e5?q=80&w=1947&auto=format&fit=crop"
-          title="University League S3"
-          date="10 Jan, 2025"
-          prize="$2,000"
-          slots="0/32"
-          status="Registration Closed"
-          tags={["Team", "Student"]}
-        />
-        <TournamentCard 
-          image="https://images.unsplash.com/photo-1593305841991-05c29736cef7?q=80&w=2070&auto=format&fit=crop"
-          title="Pro Scrimmage Open"
-          date="12 Jan, 2025"
-          prize="10,000 Gems"
-          slots="8/10"
-          status="Upcoming"
-          tags={["Scrim", "High Elo"]}
-        />
-        <TournamentCard 
-          image="https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"
-          title="New Year Basher"
-          date="01 Jan, 2025"
-          prize="$1,000"
-          slots="FULL"
-          status="Completed"
-          tags={["Event", "Holiday"]}
         />
       </div>
 
