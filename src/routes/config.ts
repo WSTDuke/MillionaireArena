@@ -6,6 +6,7 @@ import SettingsView from "../pages/dashboard/SettingsView"
 import ProfileView from "../pages/dashboard/ProfileView"
 import ArenaView from "../pages/dashboard/ArenaView"
 import ArenaLobbyView from "../pages/dashboard/ArenaLobbyView"
+import GamePlayView from "../pages/dashboard/GamePlayView"
 import TournamentsView from "../pages/dashboard/TournamentsView"
 import ClanView from "../pages/dashboard/ClanView"
 import Home from "../pages/home/HomePage"
@@ -56,5 +57,9 @@ export const routes = [
         element: ClanView,
       }
     ]
+  },
+  {
+    path: "/gameplay",
+    element: GamePlayView,
   },
 ]

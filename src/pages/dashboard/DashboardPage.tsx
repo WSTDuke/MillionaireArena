@@ -148,7 +148,7 @@ const DashboardPage = () => {
 
         {/* Dashboard Content Scrollable */}
         <div className="p-8 h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar pb-20">
-          <Outlet context={{ setProfile }} />
+          <Outlet context={{ user, profile, setProfile }} />
         </div>
       </main>
     </div>

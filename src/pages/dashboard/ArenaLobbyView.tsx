@@ -1,23 +1,46 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
 import { Users, Shield, Zap, Swords, Trophy, X, Loader2, ChevronRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 const ArenaLobbyView = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const { user, profile } = useOutletContext<any>();
     const mode = searchParams.get('mode') || 'Normal';
-    const [searching, setSearching] = useState(true);
+    const [searching] = useState(true);
     const [timer, setTimer] = useState(0);
+    const [matchFound, setMatchFound] = useState(false);
+    const [opponent, setOpponent] = useState<any>(null);
+    const [navigateTriggered, setNavigateTriggered] = useState(false);
+
+    const displayName = profile?.display_name || profile?.full_name || user?.user_metadata?.full_name || "User";
+    const avatarUrl = profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback";
 
     useEffect(() => {
         let interval: any;
-        if (searching) {
+        if (searching && !navigateTriggered) {
             interval = setInterval(() => {
                 setTimer(prev => prev + 1);
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [searching]);
+    }, [searching, navigateTriggered]);
+
+    useEffect(() => {
+        if (timer === 5 && !matchFound) {
+            setMatchFound(true);
+            setOpponent({
+                display_name: "CyberHunter_X",
+                avatar_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=opponent",
+                mmr: 980
+            });
+        }
+        
+        if (timer === 7 && !navigateTriggered) {
+             setNavigateTriggered(true);
+             navigate(`/gameplay?mode=${mode}`);
+        }
+    }, [timer, mode, navigate, matchFound, navigateTriggered]);
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -114,18 +137,30 @@ const ArenaLobbyView = () => {
                     <div className={`absolute inset-0 bg-gradient-to-r ${details.bg} rounded-full blur-[120px] opacity-30 animate-pulse`}></div>
                     <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 rounded-full border-4 border-white/5 flex items-center justify-center p-4">
                         <div className="absolute inset-0 border-4 border-dotted border-white/10 rounded-full animate-[spin_20s_linear_infinite]"></div>
-                        <div className={`w-full h-full rounded-full bg-gradient-to-br ${details.bg} border-2 ${details.border} flex flex-col items-center justify-center gap-4 shadow-[0_0_50px_rgba(0,0,0,0.5)]`}>
+                        <div className={`w-full h-full rounded-full bg-gradient-to-br ${matchFound ? 'from-green-600/20 to-emerald-600/20' : details.bg} border-2 ${matchFound ? 'border-green-500/30' : details.border} flex flex-col items-center justify-center gap-4 shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500`}>
                              <div className="relative">
-                                 <Loader2 size={64} className={`${details.color} animate-spin`} strokeWidth={1} />
-                                 <details.icon size={32} className={`absolute inset-0 m-auto ${details.color}`} />
+                                 {matchFound ? (
+                                     <div className="flex flex-col items-center gap-2 animate-bounce">
+                                         <Swords size={64} className="text-green-500" strokeWidth={1} />
+                                     </div>
+                                 ) : (
+                                     <>
+                                         <Loader2 size={64} className={`${details.color} animate-spin`} strokeWidth={1} />
+                                         <details.icon size={32} className={`absolute inset-0 m-auto ${details.color}`} />
+                                     </>
+                                 )}
                              </div>
                              <div className="text-center">
-                                 <div className="text-sm font-bold uppercase tracking-[0.2em] mb-1">Searching</div>
-                                 <div className="flex justify-center gap-1">
-                                     <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.3s]"></div>
-                                     <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.15s]"></div>
-                                     <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce"></div>
+                                 <div className={`text-sm font-black uppercase tracking-[0.2em] mb-1 ${matchFound ? 'text-green-500 animate-pulse' : ''}`}>
+                                     {matchFound ? 'Match Found!' : 'Searching'}
                                  </div>
+                                 {!matchFound && (
+                                     <div className="flex justify-center gap-1">
+                                         <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.3s]"></div>
+                                         <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.15s]"></div>
+                                         <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce"></div>
+                                     </div>
+                                 )}
                              </div>
                         </div>
                     </div>
@@ -140,12 +175,12 @@ const ArenaLobbyView = () => {
                     <div className="space-y-4">
                         {/* Current Player */}
                         <div className="flex items-center gap-4 p-5 bg-white/10 border border-white/20 rounded-2xl shadow-xl shadow-blue-500/5">
-                            <div className="w-16 h-16 rounded-full bg-blue-500 border-2 border-white/20 flex items-center justify-center overflow-hidden">
-                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=user" alt="Avatar" />
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 p-[2px] border-2 border-white/20 flex items-center justify-center overflow-hidden">
+                                <img src={avatarUrl} alt="Avatar" className="w-full h-full rounded-full object-cover border-2 border-black" />
                             </div>
                             <div className="flex-1">
                                 <div className="text-lg font-bold flex items-center gap-2">
-                                    You (Player 1) <Shield size={14} className="text-blue-400" />
+                                    {displayName} <Shield size={14} className="text-blue-400" />
                                 </div>
                                 <div className="text-xs text-blue-400 font-bold uppercase tracking-wider">Ready</div>
                             </div>
@@ -163,15 +198,30 @@ const ArenaLobbyView = () => {
                         </div>
 
                         {/* Opponent Slot */}
-                        <div className="flex items-center gap-4 p-5 bg-white/5 border border-white/5 rounded-2xl opacity-40 group hover:opacity-100 transition-opacity">
-                            <div className="w-16 h-16 rounded-full bg-neutral-800 flex items-center justify-center border border-white/5 overflow-hidden">
-                                <Users size={24} className="text-gray-600 animate-pulse" />
+                        <div className={`flex items-center gap-4 p-5 ${matchFound ? 'bg-red-500/10 border-red-500/30' : 'bg-white/5 border-white/5 opacity-40'} border rounded-2xl transition-all duration-700 ${matchFound ? 'scale-105 shadow-2xl shadow-red-500/20 animate-in slide-in-from-right-10' : ''}`}>
+                            <div className={`w-16 h-16 rounded-full ${matchFound ? 'bg-gradient-to-tr from-red-500 to-orange-600' : 'bg-neutral-800'} flex items-center justify-center border ${matchFound ? 'border-white/20 p-[2px]' : 'border-white/5'} overflow-hidden`}>
+                                {matchFound ? (
+                                     <img src={opponent?.avatar_url} alt="Opponent" className="w-full h-full rounded-full object-cover border-2 border-black animate-in fade-in zoom-in duration-500" />
+                                ) : (
+                                     <Users size={24} className="text-gray-600 animate-pulse" />
+                                )}
                             </div>
                             <div className="flex-1">
-                                <div className="h-5 w-32 bg-white/10 rounded-md mb-2"></div>
-                                <div className="h-3 w-20 bg-white/5 rounded-sm"></div>
+                                {matchFound ? (
+                                    <>
+                                        <div className="text-lg font-bold flex items-center gap-2 text-white animate-in fade-in slide-in-from-left-4 duration-500">
+                                            {opponent?.display_name} <Shield size={14} className="text-red-400" />
+                                        </div>
+                                        <div className="text-xs text-red-500 font-bold uppercase tracking-wider animate-pulse">Opponent Found</div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="h-5 w-32 bg-white/10 rounded-md mb-2"></div>
+                                        <div className="h-3 w-20 bg-white/5 rounded-sm"></div>
+                                    </>
+                                )}
                             </div>
-                            <div className="w-3 h-3 rounded-full bg-white/10"></div>
+                            <div className={`w-3 h-3 rounded-full ${matchFound ? 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]' : 'bg-white/10'}`}></div>
                         </div>
                     </div>
 
