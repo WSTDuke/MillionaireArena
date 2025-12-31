@@ -5,6 +5,7 @@ import DashboardOverview from "../pages/dashboard/DashboardOverview"
 import SettingsView from "../pages/dashboard/SettingsView"
 import ProfileView from "../pages/dashboard/ProfileView"
 import ArenaView from "../pages/dashboard/ArenaView"
+import TournamentsView from "../pages/dashboard/TournamentsView"
 import Home from "../pages/home/HomePage"
 
 export const routes = [
@@ -41,8 +42,8 @@ export const routes = [
         element: ArenaView, 
       },
       {
-        path: "tournaments", // Placeholder for Tournaments
-        element: DashboardOverview,
+        path: "tournaments", 
+        element: TournamentsView,
       },
       {
         path: "clan", // Placeholder for Clan
