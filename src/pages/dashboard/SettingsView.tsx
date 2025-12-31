@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useOutletContext } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
   User, Shield, Lock, Monitor, Save, Mail, Camera, Edit3 

@@ -1,8 +1,36 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, HelpCircle, Zap, Shield, MessageSquare, LogOut, Loader2, Flag } from 'lucide-react';
+import { Trophy, HelpCircle, Zap, Shield, MessageSquare, LogOut, Loader2, Flag, CheckCircle2, XCircle, Timer, Swords } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
+
+const QUESTIONS = [
+    {
+        text: "Trong lập trình React, Hooks nào được sử dụng để quản lý Side effects?",
+        options: ["useState", "useEffect", "useContext", "useReducer"],
+        correctAnswer: 1
+    },
+    {
+        text: "Thuộc tính nào dùng để căn giữa các item theo trục dọc trong Flexbox?",
+        options: ["justify-content", "align-items", "flex-direction", "display"],
+        correctAnswer: 1
+    },
+    {
+        text: "Phương thức nào dùng để thêm phần tử vào cuối mảng trong JavaScript?",
+        options: ["push()", "pop()", "shift()", "unshift()"],
+        correctAnswer: 0
+    },
+    {
+        text: "Tại sao nên sử dụng 'key' khi render list trong React?",
+        options: ["Để làm đẹp code", "Để React định danh và tối ưu re-render", "Bắt buộc phải có", "Để truyền data"],
+        correctAnswer: 1
+    },
+    {
+        text: "Framework nào không phải là một thư viện/framework UI của JavaScript?",
+        options: ["React", "Vue", "Django", "Angular"],
+        correctAnswer: 2
+    }
+];
 
 const GamePlayView = () => {
     const navigate = useNavigate();
@@ -13,6 +41,16 @@ const GamePlayView = () => {
     const [modalType, setModalType] = useState<'exit' | 'surrender' | null>(null);
     const [gameStage, setGameStage] = useState<'preparing' | 'starting' | 'playing'>('preparing');
     const [introTimer, setIntroTimer] = useState(5);
+
+    // New Quiz States
+    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    const [userScore, setUserScore] = useState(0);
+    const [opponentScore, setOpponentScore] = useState(0);
+    const [showTransition, setShowTransition] = useState(false);
+    const [roundPoints, setRoundPoints] = useState({ user: 0, opponent: 0 });
+    const [isGameOver, setIsGameOver] = useState(false);
+
+    const question = QUESTIONS[currentQuestionIndex];
 
     useEffect(() => {
         const getData = async () => {
@@ -25,17 +63,40 @@ const GamePlayView = () => {
         getData();
     }, []);
 
-    // Mock Question
-    const question = {
-        text: "Trong lập trình React, Hooks nào được sử dụng để quản lý Side effects?",
-        options: [
-            "useState",
-            "useEffect",
-            "useContext",
-            "useReducer"
-        ],
-        correctAnswer: 1
-    };
+    const handleAnswerSelect = useCallback((index: number) => {
+        if (isConfirmed || showTransition || isGameOver) return;
+
+        setIsConfirmed(true);
+        setSelectedAnswer(index);
+
+        // Calculate Scores
+        const uPoints = index === question.correctAnswer ? 1 : -1;
+        // Mock opponent: 70% chance correct
+        const oIsCorrect = Math.random() < 0.7;
+        const oPoints = oIsCorrect ? 1 : -1;
+
+        setRoundPoints({ user: uPoints, opponent: oPoints });
+
+        // Update total scores after a delay
+        setTimeout(() => {
+            setUserScore(prev => prev + uPoints);
+            setOpponentScore(prev => prev + oPoints);
+            setShowTransition(true);
+
+            // Hide transition and move next after 3 seconds
+            setTimeout(() => {
+                setShowTransition(false);
+                if (currentQuestionIndex < QUESTIONS.length - 1) {
+                    setCurrentQuestionIndex(prev => prev + 1);
+                    setTimeLeft(30);
+                    setIsConfirmed(false);
+                    setSelectedAnswer(null);
+                } else {
+                    setIsGameOver(true);
+                }
+            }, 3500);
+        }, 2000);
+    }, [isConfirmed, showTransition, isGameOver, question.correctAnswer, currentQuestionIndex]);
 
     useEffect(() => {
         let timer: any;
@@ -58,18 +119,14 @@ const GamePlayView = () => {
     }, [gameStage]);
 
     useEffect(() => {
-        if (timeLeft > 0 && !isConfirmed && gameStage === 'playing') {
+        if (timeLeft > 0 && !isConfirmed && gameStage === 'playing' && !showTransition && !isGameOver) {
             const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
             return () => clearInterval(timer);
+        } else if (timeLeft === 0 && !isConfirmed && gameStage === 'playing' && !showTransition) {
+            // Timeout logic
+            handleAnswerSelect(-1); // -1 signifies timeout
         }
-    }, [timeLeft, isConfirmed, gameStage]);
-
-    const handleAnswerSelect = (index: number) => {
-        if (!isConfirmed) {
-            setSelectedAnswer(index);
-            setIsConfirmed(true);
-        }
-    };
+    }, [timeLeft, isConfirmed, gameStage, showTransition, isGameOver, handleAnswerSelect]);
 
     return (
         <div className="h-screen bg-neutral-950 text-white p-4 md:p-8 flex flex-col animate-fade-in relative overflow-hidden">
@@ -93,7 +150,7 @@ const GamePlayView = () => {
                         <div className="font-bold text-sm tracking-wide">{profile?.display_name || "You"}</div>
                         <div className="flex items-center gap-2">
                              <Trophy className="text-blue-400" size={12} />
-                             <span className="text-xs font-black text-white">1,250</span>
+                             <span className="text-xs font-black text-white">{1250 + userScore}</span>
                         </div>
                     </div>
                 </div>
@@ -101,7 +158,7 @@ const GamePlayView = () => {
                 {/* Center: Timer & Round */}
                 <div className="flex items-center gap-8">
                     <div className="flex flex-col items-center">
-                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 mb-1">Round 1</div>
+                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 mb-1">Round {currentQuestionIndex + 1}</div>
                          <div className="text-2xl font-black italic text-white/20 tracking-tighter">VS</div>
                     </div>
 
@@ -150,7 +207,7 @@ const GamePlayView = () => {
                     <div>
                         <div className="font-bold text-sm tracking-wide text-gray-400">CyberHunter_X</div>
                         <div className="flex items-center justify-end gap-2">
-                             <span className="text-xs font-black text-gray-500">980</span>
+                             <span className="text-xs font-black text-gray-500">{980 + opponentScore}</span>
                              <Zap className="text-red-400" size={12} />
                         </div>
                     </div>
@@ -173,7 +230,7 @@ const GamePlayView = () => {
                     <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-[40px] blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <div className="bg-neutral-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-10 md:p-16 text-center shadow-2xl relative">
                         <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">
-                            Question 01
+                            Question 0{currentQuestionIndex + 1}
                         </div>
                         <h2 className="text-2xl md:text-4xl font-bold leading-tight text-white mb-2">
                             "{question.text}"
@@ -352,6 +409,91 @@ const GamePlayView = () => {
                              ))}
                         </div>
                     </div>
+                </div>
+            )}
+            {/* Round Transition Overlay */}
+            {showTransition && (
+                <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-neutral-950/90 backdrop-blur-xl animate-in fade-in duration-500">
+                    <div className="relative w-full max-w-4xl flex items-center justify-between px-12">
+                        {/* Player 1 Change */}
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="relative">
+                                <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full border-4 ${roundPoints.user > 0 ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]' : 'border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)]'} p-1`}>
+                                     <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-full object-cover" alt="Me" />
+                                </div>
+                                <div className={`absolute -top-10 left-1/2 -translate-x-1/2 text-4xl font-black ${roundPoints.user > 0 ? 'text-green-500' : 'text-red-500'} animate-bounce`}>
+                                    {roundPoints.user > 0 ? `+${roundPoints.user}` : roundPoints.user}
+                                </div>
+                            </div>
+                            <div className="text-xl font-bold text-white uppercase">{profile?.display_name || "HERO"}</div>
+                        </div>
+
+                        {/* VS Divider */}
+                        <div className="text-6xl font-black italic text-white/5 animate-pulse">NEXT ROUND</div>
+
+                        {/* Player 2 Change */}
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="relative">
+                                <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]' : 'border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)]'} p-1`}>
+                                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-full object-cover" alt="Opponent" />
+                                </div>
+                                <div className={`absolute -top-10 left-1/2 -translate-x-1/2 text-4xl font-black ${roundPoints.opponent > 0 ? 'text-green-500' : 'text-red-500'} animate-bounce`}>
+                                    {roundPoints.opponent > 0 ? `+${roundPoints.opponent}` : roundPoints.opponent}
+                                </div>
+                            </div>
+                            <div className="text-xl font-bold text-white uppercase">Opponent</div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Game Over / Results Overlay */}
+            {isGameOver && (
+                <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-neutral-950 px-4">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.15)_0%,transparent_70%)] animate-pulse"></div>
+                    
+                    <div className="relative mb-8 text-center animate-in zoom-in-50 duration-700">
+                        <Trophy size={80} className={`${userScore > opponentScore ? 'text-yellow-400' : 'text-gray-600'} mx-auto mb-4 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]`} />
+                        <h1 className="text-6xl md:text-8xl font-black text-white uppercase tracking-tighter italic">
+                            {userScore > opponentScore ? 'VICTORY' : userScore === opponentScore ? 'DRAW' : 'DEFEAT'}
+                        </h1>
+                        <p className="text-gray-400 font-bold uppercase tracking-widest mt-2 italic">Trận đấu đã kết thúc</p>
+                    </div>
+
+                    <div className="relative grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
+                         <div className={`p-8 rounded-[40px] border-2 ${userScore >= opponentScore ? 'bg-blue-600/10 border-blue-500/50 shadow-2xl shadow-blue-500/10' : 'bg-white/5 border-white/10'} backdrop-blur-md flex flex-col items-center gap-4`}>
+                             <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/20">
+                                 <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
+                             </div>
+                             <div className="text-center">
+                                 <div className="text-gray-400 font-bold uppercase text-xs mb-1">Your Score</div>
+                                 <div className="text-5xl font-black text-white">{1250 + userScore}</div>
+                                 <div className={`mt-2 font-bold ${userScore >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                     {userScore >= 0 ? `+${userScore}` : userScore} Points
+                                 </div>
+                             </div>
+                         </div>
+
+                         <div className={`p-8 rounded-[40px] border-2 ${opponentScore > userScore ? 'bg-red-600/10 border-red-500/50 shadow-2xl shadow-red-500/10' : 'bg-white/5 border-white/10'} backdrop-blur-md flex flex-col items-center gap-4`}>
+                             <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/20">
+                                 <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full object-cover" alt="Opponent" />
+                             </div>
+                             <div className="text-center">
+                                 <div className="text-gray-400 font-bold uppercase text-xs mb-1">Opponent Score</div>
+                                 <div className="text-5xl font-black text-white">{980 + opponentScore}</div>
+                                 <div className={`mt-2 font-bold ${opponentScore >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                     {opponentScore >= 0 ? `+${opponentScore}` : opponentScore} Points
+                                 </div>
+                             </div>
+                         </div>
+                    </div>
+
+                    <button 
+                        onClick={() => navigate('/dashboard/arena')}
+                        className="relative px-12 py-5 rounded-[25px] bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+                    >
+                        Quay lại Arena
+                    </button>
                 </div>
             )}
         </div>
