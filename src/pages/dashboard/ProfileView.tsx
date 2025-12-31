@@ -121,12 +121,14 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                   <Share2 size={18} /> <span className="hidden sm:inline">Chia sẻ</span>
                 </button>
                 
+               <Link to="/dashboard/settings">
                 <button 
                   onClick={onEditProfile}
                   className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(192,38,211,0.3)] flex items-center gap-2 transition-colors"
                 >
                   <Edit3 size={18} /> Chỉnh sửa
                 </button>
+              </Link>
               </div>
             </div>
           </div>
@@ -159,31 +161,8 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
               <div className="text-2xl font-bold text-white">Diamond III</div>
               <div className="text-sm text-gray-400">2,450 MMR</div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/5">
-                <div className="text-xs text-gray-500">Global Rank</div>
-                <div className="font-bold text-white">#1,240</div>
-              </div>
-              <div className="text-center p-3 bg-white/5 rounded-xl border border-white/5">
-                <div className="text-xs text-gray-500">Server Rank</div>
-                <div className="font-bold text-white">#42</div>
-              </div>
-            </div>
           </div>
 
-          {/* Skill Radar / Bars */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
-             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-white">
-              <Target className="text-blue-500" size={20} /> Chỉ số kỹ năng
-            </h3>
-            <div className="space-y-4">
-              <SkillBar label="Kỹ năng cá nhân" percent={85} color="bg-blue-500" />
-              <SkillBar label="Chiến thuật" percent={72} color="bg-green-500" />
-              <SkillBar label="Phối hợp đồng đội" percent={90} color="bg-purple-500" />
-              <SkillBar label="Phản xạ" percent={78} color="bg-yellow-500" />
-            </div>
-          </div>
 
           {/* Information */}
           <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-sm">
@@ -196,10 +175,6 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
               <li className="flex justify-between border-b border-white/5 pb-2">
                 <span>Email</span>
                 <span className="text-white truncate max-w-[150px]">{user?.email}</span>
-              </li>
-              <li className="flex justify-between border-b border-white/5 pb-2">
-                <span>Discord</span>
-                <span className="text-white hover:text-fuchsia-400 cursor-pointer">shadow#1234</span>
               </li>
               <li className="flex justify-between">
                 <span>Team</span>
@@ -214,10 +189,10 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
           
           {/* Overview Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-             <MiniStatBox label="Total Matches" value="1,240" icon={Swords} />
-             <MiniStatBox label="Win Rate" value="68.5%" icon={Trophy} color="text-green-400" />
-             <MiniStatBox label="K/D Ratio" value="4.2" icon={Target} color="text-red-400" />
-             <MiniStatBox label="Play Time" value="400h" icon={Clock} color="text-blue-400" />
+             <MiniStatBox label="Tổng số trận đấu" value="0" icon={Swords} />
+             <MiniStatBox label="Tỉ lệ thắng" value="0%" icon={Trophy} color="text-green-400" />
+             <MiniStatBox label="Tỉ lệ thất bại" value="0" icon={Target} color="text-red-400" />
+             <MiniStatBox label="Thời gian chơi" value="0h" icon={Clock} color="text-blue-400" />
           </div>
 
           {/* Achievements */}
@@ -243,10 +218,10 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                <Zap className="text-fuchsia-500" size={20} /> Lịch sử đấu (Mock Data)
             </h3>
             <div className="space-y-4">
-               <ProfileMatchRow result="Victory" mode="Ranked 5v5" hero="Yasuo" kda="15/2/8" time="2h ago" score="+25 MMR" />
-               <ProfileMatchRow result="Defeat" mode="Ranked 5v5" hero="Yone" kda="5/8/2" time="5h ago" score="-18 MMR" isWin={false} />
-               <ProfileMatchRow result="Victory" mode="Tournament" hero="Zed" kda="22/4/10" time="1d ago" score="+MVP" />
-               <ProfileMatchRow result="Victory" mode="Normal" hero="Lee Sin" kda="12/1/15" time="2d ago" score="+10 MMR" />
+               <ProfileMatchRow result="Victory" mode="Ranked 5v5" hero="Yasuo" ratio="15 : 8" time="2h ago" score="+25 MMR" />
+               <ProfileMatchRow result="Defeat" mode="Ranked 5v5" hero="Yone" ratio="5 : 2" time="5h ago" score="-18 MMR" isWin={false} />
+               <ProfileMatchRow result="Victory" mode="Tournament" hero="Zed" ratio="22 : 10" time="1d ago" score="+MVP" />
+               <ProfileMatchRow result="Victory" mode="Normal" hero="Lee Sin" ratio="12 : 15" time="2d ago" score="+10 MMR" />
             </div>
           </div>
 
@@ -256,19 +231,6 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   );
 };
 
-// --- Sub Components ---
-
-const SkillBar = ({ label, percent, color }: any) => (
-  <div>
-    <div className="flex justify-between text-xs mb-1">
-      <span className="text-gray-400">{label}</span>
-      <span className="text-white font-bold">{percent}%</span>
-    </div>
-    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full ${color}`} style={{ width: `${percent}%` }}></div>
-    </div>
-  </div>
-);
 
 const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }: any) => (
   <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 flex items-center gap-4 hover:border-white/20 transition-colors">
@@ -291,8 +253,8 @@ const AchievementCard = ({ title, tier, icon, color }: any) => (
   </div>
 );
 
-const ProfileMatchRow = ({ result, mode, hero, kda, time, score, isWin = true }: any) => (
-  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-colors gap-4 sm:gap-0">
+const ProfileMatchRow = ({ result, mode, ratio, time, score, isWin = true }: any) => (
+  <div className="flex flex-cols-3 sm:flex-row items-start sm:items-center justify-between p-4 rounded-xl bg-black/20 border border-white/5 hover:bg-white/5 transition-colors gap-4 sm:gap-0">
      <div className="flex items-center gap-4">
        <div className={`w-1 h-12 rounded-full ${isWin ? 'bg-green-500' : 'bg-red-500'}`}></div>
        <div>
@@ -300,20 +262,14 @@ const ProfileMatchRow = ({ result, mode, hero, kda, time, score, isWin = true }:
          <div className="text-xs text-gray-500">{mode}</div>
        </div>
      </div>
-     <div className="flex w-full sm:w-auto justify-between sm:justify-end gap-8 md:gap-12">
         <div className="text-left sm:text-center">
-           <div className="font-bold text-white">{hero}</div>
-           <div className="text-xs text-gray-500">Hero</div>
-        </div>
-        <div className="text-center">
-           <div className="font-medium text-gray-300">{kda}</div>
-           <div className="text-xs text-gray-500">KDA</div>
+           <div className="font-bold text-white">{ratio}</div>
+           <div className="text-xs text-gray-500">Ratio</div>
         </div>
         <div className="text-right">
            <div className={`font-bold ${isWin ? 'text-yellow-400' : 'text-gray-400'}`}>{score}</div>
            <div className="text-xs text-gray-500">{time}</div>
         </div>
-     </div>
   </div>
 );
 
