@@ -1,8 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, Shield, Trophy, Target, Plus, Search, Crown, Star } from 'lucide-react';
+import { ClanPageSkeleton } from '../../components/LoadingSkeletons';
 
 const ClanView = () => {
   const [activeTab, setActiveTab] = useState('my-clan'); // 'my-clan' | 'find-clan'
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) return <ClanPageSkeleton />;
 
   return (
     <div className="space-y-8 animate-fade-in-up">

@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trophy, Swords, TrendingUp, Clock, Plus, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
 
 const DashboardOverview = () => {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate initial loading
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) return <OverviewPageSkeleton />;
 
   return (
     <>

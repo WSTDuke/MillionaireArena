@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import Toast from '../../components/Toast'; // Đảm bảo đường dẫn đúng
 import type { ToastType } from '../../components/Toast';
+import { ProfileSettingsSkeleton } from '../../components/LoadingSkeletons';
 
 // --- Types ---
 interface ProfileData {
@@ -37,7 +38,6 @@ const SettingsView = () => {
     setToast({ message, type });
   };
 
-  if (loading) return <div className="text-white p-8">Đang tải dữ liệu...</div>;
 
   return (
     <div className="animate-fade-in-up relative pb-10">
@@ -195,7 +195,7 @@ const ProfileSettings = ({ user, showToast }: { user: any, showToast: any }) => 
     }
   };
 
-  if (loadingProfile) return <div className="text-gray-400">Đang tải thông tin hồ sơ...</div>;
+  if (loadingProfile) return <ProfileSettingsSkeleton />;
 
   return (
     <div className="space-y-6 animate-fade-in">

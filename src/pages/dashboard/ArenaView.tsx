@@ -1,7 +1,17 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Swords, Trophy, Users, Zap, Clock, Star, Play, Lock } from 'lucide-react';
+import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
 
 const ArenaView = () => {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) return <ArenaPageSkeleton />;
+
   return (
     <div className="space-y-8 animate-fade-in-up">
       {/* Header Section */}

@@ -1,11 +1,18 @@
-import React, { useState, useRef } from 'react'; // 1. Import useRef
+import React, { useState, useRef, useEffect } from 'react'; // 1. Import useRef
 import { Trophy, Calendar, Users, DollarSign, Filter, Search, ArrowRight, Star } from 'lucide-react';
+import { TournamentsPageSkeleton } from '../../components/LoadingSkeletons';
 
 const TournamentsView = () => {
   const [filter, setFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
   
   // 2. Khởi tạo Ref để đánh dấu vị trí muốn trượt tới
   const tabsSectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 3. Hàm xử lý hiệu ứng trượt
   const handleScrollToTabs = () => {
@@ -16,6 +23,9 @@ const TournamentsView = () => {
       });
     }
   };
+
+  if (loading) return <TournamentsPageSkeleton />;
+
 
   return (
     <div className="space-y-8 animate-fade-in-up">

@@ -5,6 +5,7 @@ import {
   Trophy, Swords, Target, Clock, Zap, Medal, 
   Share2, Edit3, MapPin, Calendar, Award, Globe, User as UserIcon
 } from 'lucide-react';
+import { ProfilePageSkeleton } from '../../components/LoadingSkeletons';
 
 interface ProfileData {
   id: string;
@@ -49,7 +50,8 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
     fetchProfileData();
   }, []);
 
-  if (loading) return <div className="text-white p-8">Đang tải hồ sơ...</div>;
+  if (loading) return <ProfilePageSkeleton />;
+
 
   // Logic ưu tiên hiển thị: Profile DB -> User Metadata -> Email -> Default
   const displayName = profile?.display_name || user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'User';
