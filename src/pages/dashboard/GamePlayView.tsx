@@ -1,40 +1,55 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, HelpCircle, Zap, Shield, MessageSquare, LogOut, Loader2, Flag, CheckCircle2, XCircle, Timer, Swords } from 'lucide-react';
+import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
 
 const QUESTIONS = [
-    {
-        text: "Trong lập trình React, Hooks nào được sử dụng để quản lý Side effects?",
-        options: ["useState", "useEffect", "useContext", "useReducer"],
-        correctAnswer: 1
-    },
-    {
-        text: "Thuộc tính nào dùng để căn giữa các item theo trục dọc trong Flexbox?",
-        options: ["justify-content", "align-items", "flex-direction", "display"],
-        correctAnswer: 1
-    },
-    {
-        text: "Phương thức nào dùng để thêm phần tử vào cuối mảng trong JavaScript?",
-        options: ["push()", "pop()", "shift()", "unshift()"],
-        correctAnswer: 0
-    },
-    {
-        text: "Tại sao nên sử dụng 'key' khi render list trong React?",
-        options: ["Để làm đẹp code", "Để React định danh và tối ưu re-render", "Bắt buộc phải có", "Để truyền data"],
-        correctAnswer: 1
-    },
-    {
-        text: "Framework nào không phải là một thư viện/framework UI của JavaScript?",
-        options: ["React", "Vue", "Django", "Angular"],
-        correctAnswer: 2
-    }
+    // ROUND 1: WEB BASICS
+    { text: "HTML là viết tắt của gì?", options: ["Hyper Text Markup Language", "High Tech Modern Language", "Hyperlink and Text Markup Language", "Home Tool Markup Language"], correctAnswer: 0 },
+    { text: "Trong CSS, thuộc tính nào dùng để thay đổi màu chữ?", options: ["background-color", "color", "text-style", "font-color"], correctAnswer: 1 },
+    { text: "Thẻ HTML nào dùng để tạo liên kết?", options: ["<link>", "<a>", "<href>", "<url>"], correctAnswer: 1 },
+    { text: "Phần tử nào dùng để định nghĩa tiêu đề quan trọng nhất?", options: ["<h6>", "<head>", "<h1>", "<title>"], correctAnswer: 2 },
+    { text: "Ký hiệu nào dùng để chọn ID trong CSS?", options: [".", "#", "*", "&"], correctAnswer: 1 },
+    { text: "Trong JS, 'var', 'let', 'const' khác nhau ở đâu?", options: ["Không khác", "Phạm vi và khả năng gán lại", "Chỉ khác tên", "Tốc độ xử lý"], correctAnswer: 1 },
+    { text: "Giá trị của '2' + 2 trong JavaScript là gì?", options: ["4", "22", "NaN", "Error"], correctAnswer: 1 },
+    { text: "Lệnh nào dùng để in ra console?", options: ["print()", "log.console()", "console.log()", "display()"], correctAnswer: 2 },
+    { text: "Mảng trong JS bắt đầu từ index nào?", options: ["0", "1", "-1", "Any"], correctAnswer: 0 },
+    { text: "Toán tử '===' khác '==' như thế nào?", options: ["Không khác", "So sánh cả giá trị và kiểu dữ liệu", "Chỉ so sánh giá trị", "Dùng cho Object"], correctAnswer: 1 },
+
+    // ROUND 2: REACT BASICS
+    { text: "React là gì?", options: ["Hệ quản trị CSDL", "Library UI của JS", "Framework CSS", "Hệ điều hành"], correctAnswer: 1 },
+    { text: "Cú pháp JSX là gì?", options: ["JS Extension", "Java Syntax XML", "JSON Static X", "Just Simple XML"], correctAnswer: 0 },
+    { text: "Hook nào dùng để lưu trữ trạng thái?", options: ["useEffect", "useMemo", "useState", "useRef"], correctAnswer: 2 },
+    { text: "Props trong React dùng để làm gì?", options: ["Lưu biến local", "Truyền dữ liệu giữa các component", "Thay đổi DOM trực tiếp", "Định dạng CSS"], correctAnswer: 1 },
+    { text: "Virtual DOM giúp gì cho React?", options: ["Làm code ngắn hơn", "Tối ưu hóa tốc độ render", "Bảo mật hơn", "Thay thế hoàn toàn Real DOM"], correctAnswer: 1 },
+    { text: "Component trong React phải bắt đầu bằng chữ cái gì?", options: ["Viết thường", "Viết hoa", "Số", "Ký hiệu"], correctAnswer: 1 },
+    { text: "Tác dụng của useEffect với mảng dependency rỗng []?", options: ["Chạy mỗi lần render", "Chỉ chạy 1 lần sau khi mount", "Không bao giờ chạy", "Chạy khi có lỗi"], correctAnswer: 1 },
+    { text: "Lệnh tạo project React mới (Vite)?", options: ["npm create vite@latest", "npx create-react-app", "npm install react", "git clone react"], correctAnswer: 0 },
+    { text: "Fragment trong React dùng để làm gì?", options: ["Tăng tốc độ", "Nhóm nhiều phần tử mà không thêm node DOM", "Tạo animation", "Xử lý API"], correctAnswer: 1 },
+    { text: "Cách truyền hàm từ cha xuống con?", options: ["Qua State", "Qua Props", "Qua Context duy nhất", "Không truyền được"], correctAnswer: 1 },
+
+    // ROUND 3: ADVANCED & PERFORMANCE
+    { text: "useMemo dùng để làm gì?", options: ["Ghi nhớ giá trị tính toán", "Ghi nhớ hàm", "Ghi nhớ DOM", "Xử lý Side Effect"], correctAnswer: 0 },
+    { text: "useCallback khác useMemo ở điểm nào?", options: ["Không khác", "useCallback trả về hàm, useMemo trả về giá tới", "useCallback chậm hơn", "useMemo chỉ dùng cho số"], correctAnswer: 1 },
+    { text: "Pure Component là gì?", options: ["Component không có CSS", "Component chỉ render lại khi props/state thay đổi thực sự", "Component không có state", "Component viết bằng Class"], correctAnswer: 1 },
+    { text: "React Context API giải quyết vấn đề gì?", options: ["Tăng tốc độ UI", "Tránh 'Prop Drilling'", "Quản lý file", "Gọi API"], correctAnswer: 1 },
+    { text: "Thư viện quản lý state phổ biến nào?", options: ["Redux", "Zustand", "Recoil", "Tất cả đều đúng"], correctAnswer: 3 },
+    { text: "Server-Side Rendering (SSR) là gì?", options: ["Render ở trình duyệt", "Render ở Server rồi gửi HTML về", "Render bằng database", "Máy chủ không cần render"], correctAnswer: 1 },
+    { text: "Cơ chế 'Reconciliation' là gì?", options: ["Sửa lỗi code", "Thuật toán so sánh Virtual DOM", "Kết nối Database", "Bảo mật ứng dụng"], correctAnswer: 1 },
+    { text: "Hydration trong Next.js là gì?", options: ["Làm sạch code", "Biến HTML tĩnh thành React app động trên client", "Tải ảnh nhanh", "Kết nối Wifi"], correctAnswer: 1 },
+    { text: "Custom Hook bắt đầu bằng từ khóa nào?", options: ["handle", "use", "get", "set"], correctAnswer: 1 },
+    { text: "React.lazy() dùng để làm gì?", options: ["Lười viết code", "Code-splitting và Lazy loading component", "Tăng kích thước file", "Dừng chạy app"], correctAnswer: 1 }
 ];
+
+interface Profile {
+    display_name: string;
+    avatar_url: string;
+}
 
 const GamePlayView = () => {
     const navigate = useNavigate();
-    const [profile, setProfile] = useState<any>(null);
+    const [profile, setProfile] = useState<Profile | null>(null);
     const [timeLeft, setTimeLeft] = useState(30);
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [isConfirmed, setIsConfirmed] = useState(false);
@@ -44,12 +59,22 @@ const GamePlayView = () => {
 
     // New Quiz States
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-    const [userScore, setUserScore] = useState(0);
-    const [opponentScore, setOpponentScore] = useState(0);
+    const [userScore, setUserScore] = useState(10);
+    const [opponentScore, setOpponentScore] = useState(10);
     const [showTransition, setShowTransition] = useState(false);
     const [roundPoints, setRoundPoints] = useState({ user: 0, opponent: 0 });
     const [isGameOver, setIsGameOver] = useState(false);
 
+    // Cinematic & Set Scoring States
+    const [setScores, setSetScores] = useState<{ user: number; opponent: number }>({ user: 0, opponent: 0 });
+    const [roundPointsHistory, setRoundPointsHistory] = useState<{ user: number; opponent: number }>({ user: 10, opponent: 10 });
+    const [showRoundIntro, setShowRoundIntro] = useState(false);
+    const [showSetResults, setShowSetResults] = useState(false);
+    const [isMatchEnding, setIsMatchEnding] = useState(false);
+
+    const currentRound = Math.floor(currentQuestionIndex / 10) + 1;
+    const questionNumberInRound = (currentQuestionIndex % 10) + 1;
+    const isEndOfRound = questionNumberInRound === 10;
     const question = QUESTIONS[currentQuestionIndex];
 
     useEffect(() => {
@@ -77,26 +102,74 @@ const GamePlayView = () => {
 
         setRoundPoints({ user: uPoints, opponent: oPoints });
 
-        // Update total scores after a delay
+        // Update total scores and CURRENT ROUND points
         setTimeout(() => {
             setUserScore(prev => prev + uPoints);
-            setOpponentScore(prev => prev + oPoints);
+            setRoundPointsHistory(prev => ({ ...prev, user: prev.user + uPoints }));
             setShowTransition(true);
 
-            // Hide transition and move next after 3 seconds
+            // Decouple opponent score update with random delay
+            const opponentDelay = 800 + Math.random() * 1000;
+            setTimeout(() => {
+                setOpponentScore(prev => prev + oPoints);
+                setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + oPoints }));
+                setRoundPoints(prev => ({ ...prev, opponent: oPoints }));
+            }, opponentDelay);
+
+            // Hide transition and move next after 4 seconds
             setTimeout(() => {
                 setShowTransition(false);
-                if (currentQuestionIndex < QUESTIONS.length - 1) {
-                    setCurrentQuestionIndex(prev => prev + 1);
-                    setTimeLeft(30);
-                    setIsConfirmed(false);
-                    setSelectedAnswer(null);
+
+                if (questionNumberInRound === 10) {
+                    // Set result logic - using local calculations to avoid stale state closures
+                    const finalUserRoundPoints = roundPointsHistory.user + uPoints;
+                    const finalOpponentRoundPoints = roundPointsHistory.opponent + oPoints;
+                    const userWonSet = finalUserRoundPoints > finalOpponentRoundPoints;
+                    const isRoundDraw = finalUserRoundPoints === finalOpponentRoundPoints;
+                    
+                    if (!isRoundDraw) {
+                        setSetScores(prev => ({
+                            user: userWonSet ? prev.user + 1 : prev.user,
+                            opponent: userWonSet ? prev.opponent : prev.opponent + 1
+                        }));
+                    }
+                    
+                    setShowSetResults(true);
+
+                    setTimeout(() => {
+                        setShowSetResults(false);
+                        setRoundPointsHistory({ user: 10, opponent: 10 });
+                        setUserScore(10);
+                        setOpponentScore(10);
+
+                        if (currentRound < 3) {
+                            setCurrentQuestionIndex(prev => prev + 1);
+                            setShowRoundIntro(true);
+                            setTimeout(() => setShowRoundIntro(false), 2000);
+                            setTimeLeft(30);
+                            setIsConfirmed(false);
+                            setSelectedAnswer(null);
+                        } else {
+                            setIsMatchEnding(true);
+                            setTimeout(() => {
+                                setIsMatchEnding(false);
+                                setIsGameOver(true);
+                            }, 2500);
+                        }
+                    }, 4000);
                 } else {
-                    setIsGameOver(true);
+                    if (currentQuestionIndex < QUESTIONS.length - 1) {
+                        setCurrentQuestionIndex(prev => prev + 1);
+                        setTimeLeft(30);
+                        setIsConfirmed(false);
+                        setSelectedAnswer(null);
+                    } else {
+                        setIsGameOver(true);
+                    }
                 }
-            }, 3500);
+            }, 4000);
         }, 2000);
-    }, [isConfirmed, showTransition, isGameOver, question.correctAnswer, currentQuestionIndex]);
+    }, [isConfirmed, showTransition, isGameOver, question.correctAnswer, currentQuestionIndex, roundPointsHistory, currentRound, questionNumberInRound]);
 
     useEffect(() => {
         let timer: any;
@@ -113,6 +186,8 @@ const GamePlayView = () => {
         } else if (gameStage === 'starting') {
             timer = setTimeout(() => {
                 setGameStage('playing');
+                setShowRoundIntro(true);
+                setTimeout(() => setShowRoundIntro(false), 2000);
             }, 1500);
         }
         return () => clearInterval(timer);
@@ -122,9 +197,13 @@ const GamePlayView = () => {
         if (timeLeft > 0 && !isConfirmed && gameStage === 'playing' && !showTransition && !isGameOver) {
             const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
             return () => clearInterval(timer);
-        } else if (timeLeft === 0 && !isConfirmed && gameStage === 'playing' && !showTransition) {
-            // Timeout logic
-            handleAnswerSelect(-1); // -1 signifies timeout
+        } else if (timeLeft === 0 && !isConfirmed && gameStage === 'playing' && !showTransition && !isGameOver) {
+            // Timeout logic - using setTimeout to avoid synchronous setState inside effect
+            setTimeout(() => {
+                if (!isConfirmed && !showTransition) {
+                    handleAnswerSelect(-1);
+                }
+            }, 0);
         }
     }, [timeLeft, isConfirmed, gameStage, showTransition, isGameOver, handleAnswerSelect]);
 
@@ -150,7 +229,7 @@ const GamePlayView = () => {
                         <div className="font-bold text-sm tracking-wide">{profile?.display_name || "You"}</div>
                         <div className="flex items-center gap-2">
                              <Trophy className="text-blue-400" size={12} />
-                             <span className="text-xs font-black text-white">{1250 + userScore}</span>
+                             <span className="text-xs font-black text-white">{setScores.user} ( hiệp ) / {userScore} ( điểm )</span>
                         </div>
                     </div>
                 </div>
@@ -158,8 +237,8 @@ const GamePlayView = () => {
                 {/* Center: Timer & Round */}
                 <div className="flex items-center gap-8">
                     <div className="flex flex-col items-center">
-                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 mb-1">Round {currentQuestionIndex + 1}</div>
-                         <div className="text-2xl font-black italic text-white/20 tracking-tighter">VS</div>
+                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-1">Round {currentRound} - Câu {questionNumberInRound}/10</div>
+                         <div className="text-2xl font-black italic text-white/10 tracking-tighter">VS</div>
                     </div>
 
                     <div className="relative group">
@@ -207,7 +286,7 @@ const GamePlayView = () => {
                     <div>
                         <div className="font-bold text-sm tracking-wide text-gray-400">CyberHunter_X</div>
                         <div className="flex items-center justify-end gap-2">
-                             <span className="text-xs font-black text-gray-500">{980 + opponentScore}</span>
+                             <span className="text-xs font-black text-gray-400">{opponentScore} ( điểm ) / {setScores.opponent} ( hiệp )</span>
                              <Zap className="text-red-400" size={12} />
                         </div>
                     </div>
@@ -241,7 +320,7 @@ const GamePlayView = () => {
                 {/* Answers Grid */}
                 {gameStage === 'playing' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-10 duration-700">
-                        {question.options.map((option, index) => (
+                        {question.options.map((option: string, index: number) => (
                             <button
                                 key={index}
                                 onClick={() => handleAnswerSelect(index)}
@@ -356,7 +435,7 @@ const GamePlayView = () => {
                             <div className="text-center">
                                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "HERO"}</h2>
                                 <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">MMR: 1,250</div>
+                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Score: 10</div>
                                 </div>
                             </div>
                         </div>
@@ -391,7 +470,7 @@ const GamePlayView = () => {
                             <div className="text-center">
                                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">CyberHunter_X</h2>
                                 <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">MMR: 980</div>
+                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Score: 10</div>
                                 </div>
                             </div>
                         </div>
@@ -413,35 +492,55 @@ const GamePlayView = () => {
             )}
             {/* Round Transition Overlay */}
             {showTransition && (
-                <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-neutral-950/90 backdrop-blur-xl animate-in fade-in duration-500">
-                    <div className="relative w-full max-w-4xl flex items-center justify-between px-12">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/90 backdrop-blur-xl animate-in fade-in duration-500 overflow-hidden">
+                    {/* Background Text - Dead Centered */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0">
+                        <div className="text-7xl md:text-[12rem] font-black italic text-white/[0.03] animate-pulse text-center leading-[0.8]">
+                            {isEndOfRound ? (
+                                <div className="flex flex-col items-center">
+                                    <span>ROUND {currentRound}</span>
+                                    <span className="text-4xl md:text-6xl mt-6 opacity-30 tracking-[0.3em]">DONE</span>
+                                </div>
+                            ) : (
+                                'NEXT QUESTION'
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="relative w-full max-w-5xl flex items-center justify-between px-8 md:px-20 z-10">
                         {/* Player 1 Change */}
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="relative">
-                                <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full border-4 ${roundPoints.user > 0 ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]' : 'border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)]'} p-1`}>
-                                     <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-full object-cover" alt="Me" />
-                                </div>
-                                <div className={`absolute -top-10 left-1/2 -translate-x-1/2 text-4xl font-black ${roundPoints.user > 0 ? 'text-green-500' : 'text-red-500'} animate-bounce`}>
-                                    {roundPoints.user > 0 ? `+${roundPoints.user}` : roundPoints.user}
-                                </div>
-                            </div>
-                            <div className="text-xl font-bold text-white uppercase">{profile?.display_name || "HERO"}</div>
+                        <div className="flex flex-col items-center gap-6 animate-in slide-in-from-left-20 duration-700">
+                             <div className="relative">
+                                 <div className={`w-36 h-36 md:w-56 md:h-56 rounded-full border-4 ${roundPoints.user > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} p-1.5 bg-black`}>
+                                      <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-full object-cover" alt="Me" />
+                                 </div>
+                                 <div className={`absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black ${roundPoints.user > 0 ? 'text-green-500' : 'text-red-500'} drop-shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-bounce`}>
+                                     {roundPoints.user > 0 ? `+${roundPoints.user}` : roundPoints.user}
+                                 </div>
+                             </div>
+                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{profile?.display_name || "HERO"}</div>
                         </div>
 
-                        {/* VS Divider */}
-                        <div className="text-6xl font-black italic text-white/5 animate-pulse">NEXT ROUND</div>
+                        {/* Center Spacer for Continue Button */}
+                        <div className="flex flex-col items-center justify-center min-w-[100px] md:min-w-[200px]">
+                            {isEndOfRound && currentRound < 3 && (
+                                <div className="px-8 py-3 rounded-full bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm font-black tracking-widest uppercase animate-bounce shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+                                    Tiếp tục Round {currentRound + 1}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Player 2 Change */}
-                        <div className="flex flex-col items-center gap-4">
-                            <div className="relative">
-                                <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]' : 'border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)]'} p-1`}>
-                                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-full object-cover" alt="Opponent" />
-                                </div>
-                                <div className={`absolute -top-10 left-1/2 -translate-x-1/2 text-4xl font-black ${roundPoints.opponent > 0 ? 'text-green-500' : 'text-red-500'} animate-bounce`}>
-                                    {roundPoints.opponent > 0 ? `+${roundPoints.opponent}` : roundPoints.opponent}
-                                </div>
-                            </div>
-                            <div className="text-xl font-bold text-white uppercase">Opponent</div>
+                        <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-20 duration-700">
+                             <div className="relative">
+                                 <div className={`w-36 h-36 md:w-56 md:h-56 rounded-full border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} p-1.5 bg-black`}>
+                                      <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-full object-cover" alt="Opponent" />
+                                 </div>
+                                 <div className={`absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black ${roundPoints.opponent > 0 ? 'text-green-500' : 'text-red-500'} drop-shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-bounce`}>
+                                     {roundPoints.opponent > 0 ? `+${roundPoints.opponent}` : roundPoints.opponent}
+                                 </div>
+                             </div>
+                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">Opponent</div>
                         </div>
                     </div>
                 </div>
@@ -450,39 +549,54 @@ const GamePlayView = () => {
             {/* Game Over / Results Overlay */}
             {isGameOver && (
                 <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-neutral-950 px-4">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.15)_0%,transparent_70%)] animate-pulse"></div>
+                    <div className={`absolute inset-0 ${setScores.user > setScores.opponent ? 'bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.15)_0%,transparent_70%)]' : setScores.user < setScores.opponent ? 'bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.1)_0%,transparent_70%)]' : 'bg-transparent'} animate-pulse`}></div>
                     
                     <div className="relative mb-8 text-center animate-in zoom-in-50 duration-700">
-                        <Trophy size={80} className={`${userScore > opponentScore ? 'text-yellow-400' : 'text-gray-600'} mx-auto mb-4 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]`} />
-                        <h1 className="text-6xl md:text-8xl font-black text-white uppercase tracking-tighter italic">
-                            {userScore > opponentScore ? 'VICTORY' : userScore === opponentScore ? 'DRAW' : 'DEFEAT'}
+                        <Trophy size={80} className={`${setScores.user > setScores.opponent ? 'text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]' : setScores.user < setScores.opponent ? 'text-gray-400 drop-shadow-none' : 'text-gray-600'} mx-auto mb-4`} />
+                        <h1 className={`text-6xl md:text-8xl font-black uppercase tracking-tighter italic leading-none ${
+                            setScores.user > setScores.opponent ? 'text-blue-500' : 
+                            setScores.user < setScores.opponent ? 'text-red-500' : 'text-white'
+                        }`}>
+                            {setScores.user > setScores.opponent ? 'VICTORY' : setScores.user === setScores.opponent ? 'DRAW' : 'DEFEAT'}
                         </h1>
-                        <p className="text-gray-400 font-bold uppercase tracking-widest mt-2 italic">Trận đấu đã kết thúc</p>
+                        <p className="text-gray-500 font-bold uppercase tracking-widest mt-4 italic text-sm">Trận đấu đã kết thúc</p>
                     </div>
 
-                    <div className="relative grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl mb-12">
-                         <div className={`p-8 rounded-[40px] border-2 ${userScore >= opponentScore ? 'bg-blue-600/10 border-blue-500/50 shadow-2xl shadow-blue-500/10' : 'bg-white/5 border-white/10'} backdrop-blur-md flex flex-col items-center gap-4`}>
-                             <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/20">
-                                 <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
+                    <div className="relative grid grid-cols-2 gap-4 md:gap-8 w-full max-w-5xl mb-12">
+                         {/* My Score Card */}
+                         <div className={`relative p-6 md:p-10 rounded-[35px] md:rounded-[45px] border-2 ${setScores.user >= setScores.opponent ? 'bg-blue-600/10 border-blue-500/30' : 'bg-white/5 border-white/5'} backdrop-blur-xl overflow-hidden animate-in slide-in-from-left-20 duration-1000`}>
+                             {/* Set Score Indicator (Right Inner) */}
+                             <div className="absolute top-1/2 -right-4 mx-8 -translate-y-1/2 text-[100px] md:text-[180px] font-black text-blue-500/10 italic leading-none select-none pointer-events-none">
+                                 {setScores.user}
                              </div>
-                             <div className="text-center">
-                                 <div className="text-gray-400 font-bold uppercase text-xs mb-1">Your Score</div>
-                                 <div className="text-5xl font-black text-white">{1250 + userScore}</div>
-                                 <div className={`mt-2 font-bold ${userScore >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                     {userScore >= 0 ? `+${userScore}` : userScore} Points
+
+                             <div className="relative z-10 flex flex-col items-center">
+                                 <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
+                                     <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
+                                 </div>
+                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Your Score</div>
+                                 <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{userScore}</div>
+                                 <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${userScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
+                                     Total: {userScore}
                                  </div>
                              </div>
                          </div>
 
-                         <div className={`p-8 rounded-[40px] border-2 ${opponentScore > userScore ? 'bg-red-600/10 border-red-500/50 shadow-2xl shadow-red-500/10' : 'bg-white/5 border-white/10'} backdrop-blur-md flex flex-col items-center gap-4`}>
-                             <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/20">
-                                 <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full object-cover" alt="Opponent" />
+                         {/* Opponent Score Card */}
+                         <div className={`relative p-6 md:p-10 rounded-[35px] md:rounded-[45px] border-2 ${setScores.opponent > setScores.user ? 'bg-red-600/10 border-red-500/30' : 'bg-white/5 border-white/5'} backdrop-blur-xl overflow-hidden animate-in slide-in-from-right-20 duration-1000`}>
+                             {/* Set Score Indicator (Left Inner) */}
+                             <div className="absolute top-1/2 -left-4 mx-8 -translate-y-1/2 text-[100px] md:text-[180px] font-black text-red-500/10 italic leading-none select-none pointer-events-none">
+                                 {setScores.opponent}
                              </div>
-                             <div className="text-center">
-                                 <div className="text-gray-400 font-bold uppercase text-xs mb-1">Opponent Score</div>
-                                 <div className="text-5xl font-black text-white">{980 + opponentScore}</div>
-                                 <div className={`mt-2 font-bold ${opponentScore >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                     {opponentScore >= 0 ? `+${opponentScore}` : opponentScore} Points
+
+                             <div className="relative z-10 flex flex-col items-center">
+                                 <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
+                                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full object-cover" alt="Opponent" />
+                                 </div>
+                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Opponent Score</div>
+                                 <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{opponentScore}</div>
+                                 <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${opponentScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
+                                     Total: {opponentScore}
                                  </div>
                              </div>
                          </div>
@@ -494,6 +608,76 @@ const GamePlayView = () => {
                     >
                         Quay lại Arena
                     </button>
+                </div>
+            )}
+            {/* Round Intro Overlay (Black Screen) */}
+            {showRoundIntro && (
+                <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-in fade-in duration-700">
+                    <div className="flex flex-col items-center gap-4 animate-in zoom-in-50 duration-500">
+                         <div className="w-20 h-1 bg-white/20 rounded-full mb-4"></div>
+                         <h1 className="text-6xl md:text-9xl font-black text-white tracking-[0.2em] italic">ROUND {currentRound}</h1>
+                         <div className="w-20 h-1 bg-white/20 rounded-full mt-4"></div>
+                    </div>
+                </div>
+            )}
+
+            {/* Set Result (Face-off Style) Overlay */}
+            {showSetResults && (
+                <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-neutral-950 px-4 animate-in fade-in duration-500">
+                    <div className="absolute inset-0 bg-gradient-to-b from-blue-600/10 via-transparent to-red-600/10"></div>
+                    
+                    <div className="relative mb-8 text-center">
+                        <h2 className="text-3xl md:text-6xl font-black text-white uppercase italic tracking-tighter mb-4 animate-in slide-in-from-top-10 duration-700">HIỆP {currentRound} KẾT THÚC</h2>
+                        <div className="inline-flex flex-col items-center gap-2">
+                            <div className="px-10 py-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl">
+                                <span className="text-sm font-bold text-gray-400 uppercase tracking-[0.3em] mb-1 block">Tỉ số trận đấu</span>
+                                <div className="text-4xl md:text-6xl font-black text-white tracking-widest">
+                                    <span className="text-blue-500">{setScores.user}</span>
+                                    <span className="mx-4 text-white/20">-</span>
+                                    <span className="text-red-500">{setScores.opponent}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="relative w-full max-w-5xl grid grid-cols-2 items-center gap-4 md:gap-12 px-2 md:px-0">
+                        <div className="flex flex-col items-center gap-4 md:gap-6">
+                            <div className="relative">
+                                <div className="w-24 h-24 md:w-56 md:h-56 rounded-[30px] md:rounded-[40px] border-4 border-blue-500 shadow-[0_0_50px_rgba(59,130,246,0.3)] p-1 animate-in slide-in-from-left-20 duration-1000 rotate-[-4deg]">
+                                    <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-[24px] md:rounded-[34px] object-cover" alt="Me" />
+                                </div>
+                                <div className="absolute -top-3 -right-3 px-3 py-1 bg-blue-600 rounded-lg text-[10px] md:text-sm font-black italic shadow-xl">+{roundPointsHistory.user}</div>
+                            </div>
+                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">{profile?.display_name || "HERO"}</div>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-4 md:gap-6">
+                            <div className="relative">
+                                <div className="w-24 h-24 md:w-56 md:h-56 rounded-[30px] md:rounded-[40px] border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)] p-1 animate-in slide-in-from-right-20 duration-1000 rotate-[4deg]">
+                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-[24px] md:rounded-[34px] object-cover" alt="Opponent" />
+                                </div>
+                                <div className="absolute -top-3 -left-3 px-3 py-1 bg-red-600 rounded-lg text-[10px] md:text-sm font-black italic shadow-xl">+{roundPointsHistory.opponent}</div>
+                            </div>
+                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">CyberHunter_X</div>
+                        </div>
+                        
+                        {/* Overlay VS Text absolute centered */}
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-5xl md:text-8xl font-black italic text-white/5 tracking-tighter select-none pointer-events-none">VS</div>
+                    </div>
+                </div>
+            )}
+
+            {/* Match End Overlay (Black Screen) */}
+            {isMatchEnding && (
+                <div className="fixed inset-0 z-[110] bg-black flex items-center justify-center animate-in fade-in duration-700">
+                    <div className="text-center animate-in zoom-in-150 duration-700">
+                         <h1 className="text-5xl md:text-8xl font-black text-white uppercase tracking-widest italic leading-none">TRẬN ĐẤU<br/>KẾT THÚC</h1>
+                         <div className="mt-8 flex justify-center gap-1">
+                             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce delay-0"></div>
+                             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce delay-150"></div>
+                             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce delay-300"></div>
+                         </div>
+                    </div>
                 </div>
             )}
         </div>

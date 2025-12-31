@@ -32,7 +32,7 @@ const ArenaLobbyView = () => {
             setOpponent({
                 display_name: "CyberHunter_X",
                 avatar_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=opponent",
-                mmr: 980
+                mmr: 10
             });
         }
         
