@@ -1,46 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
 
-const QUESTIONS = [
-    // ROUND 1: WEB BASICS
-    { text: "HTML là viết tắt của gì?", options: ["Hyper Text Markup Language", "High Tech Modern Language", "Hyperlink and Text Markup Language", "Home Tool Markup Language"], correctAnswer: 0 },
-    { text: "Trong CSS, thuộc tính nào dùng để thay đổi màu chữ?", options: ["background-color", "color", "text-style", "font-color"], correctAnswer: 1 },
-    { text: "Thẻ HTML nào dùng để tạo liên kết?", options: ["<link>", "<a>", "<href>", "<url>"], correctAnswer: 1 },
-    { text: "Phần tử nào dùng để định nghĩa tiêu đề quan trọng nhất?", options: ["<h6>", "<head>", "<h1>", "<title>"], correctAnswer: 2 },
-    { text: "Ký hiệu nào dùng để chọn ID trong CSS?", options: [".", "#", "*", "&"], correctAnswer: 1 },
-    { text: "Trong JS, 'var', 'let', 'const' khác nhau ở đâu?", options: ["Không khác", "Phạm vi và khả năng gán lại", "Chỉ khác tên", "Tốc độ xử lý"], correctAnswer: 1 },
-    { text: "Giá trị của '2' + 2 trong JavaScript là gì?", options: ["4", "22", "NaN", "Error"], correctAnswer: 1 },
-    { text: "Lệnh nào dùng để in ra console?", options: ["print()", "log.console()", "console.log()", "display()"], correctAnswer: 2 },
-    { text: "Mảng trong JS bắt đầu từ index nào?", options: ["0", "1", "-1", "Any"], correctAnswer: 0 },
-    { text: "Toán tử '===' khác '==' như thế nào?", options: ["Không khác", "So sánh cả giá trị và kiểu dữ liệu", "Chỉ so sánh giá trị", "Dùng cho Object"], correctAnswer: 1 },
-
-    // ROUND 2: REACT BASICS
-    { text: "React là gì?", options: ["Hệ quản trị CSDL", "Library UI của JS", "Framework CSS", "Hệ điều hành"], correctAnswer: 1 },
-    { text: "Cú pháp JSX là gì?", options: ["JS Extension", "Java Syntax XML", "JSON Static X", "Just Simple XML"], correctAnswer: 0 },
-    { text: "Hook nào dùng để lưu trữ trạng thái?", options: ["useEffect", "useMemo", "useState", "useRef"], correctAnswer: 2 },
-    { text: "Props trong React dùng để làm gì?", options: ["Lưu biến local", "Truyền dữ liệu giữa các component", "Thay đổi DOM trực tiếp", "Định dạng CSS"], correctAnswer: 1 },
-    { text: "Virtual DOM giúp gì cho React?", options: ["Làm code ngắn hơn", "Tối ưu hóa tốc độ render", "Bảo mật hơn", "Thay thế hoàn toàn Real DOM"], correctAnswer: 1 },
-    { text: "Component trong React phải bắt đầu bằng chữ cái gì?", options: ["Viết thường", "Viết hoa", "Số", "Ký hiệu"], correctAnswer: 1 },
-    { text: "Tác dụng của useEffect với mảng dependency rỗng []?", options: ["Chạy mỗi lần render", "Chỉ chạy 1 lần sau khi mount", "Không bao giờ chạy", "Chạy khi có lỗi"], correctAnswer: 1 },
-    { text: "Lệnh tạo project React mới (Vite)?", options: ["npm create vite@latest", "npx create-react-app", "npm install react", "git clone react"], correctAnswer: 0 },
-    { text: "Fragment trong React dùng để làm gì?", options: ["Tăng tốc độ", "Nhóm nhiều phần tử mà không thêm node DOM", "Tạo animation", "Xử lý API"], correctAnswer: 1 },
-    { text: "Cách truyền hàm từ cha xuống con?", options: ["Qua State", "Qua Props", "Qua Context duy nhất", "Không truyền được"], correctAnswer: 1 },
-
-    // ROUND 3: ADVANCED & PERFORMANCE
-    { text: "useMemo dùng để làm gì?", options: ["Ghi nhớ giá trị tính toán", "Ghi nhớ hàm", "Ghi nhớ DOM", "Xử lý Side Effect"], correctAnswer: 0 },
-    { text: "useCallback khác useMemo ở điểm nào?", options: ["Không khác", "useCallback trả về hàm, useMemo trả về giá tới", "useCallback chậm hơn", "useMemo chỉ dùng cho số"], correctAnswer: 1 },
-    { text: "Pure Component là gì?", options: ["Component không có CSS", "Component chỉ render lại khi props/state thay đổi thực sự", "Component không có state", "Component viết bằng Class"], correctAnswer: 1 },
-    { text: "React Context API giải quyết vấn đề gì?", options: ["Tăng tốc độ UI", "Tránh 'Prop Drilling'", "Quản lý file", "Gọi API"], correctAnswer: 1 },
-    { text: "Thư viện quản lý state phổ biến nào?", options: ["Redux", "Zustand", "Recoil", "Tất cả đều đúng"], correctAnswer: 3 },
-    { text: "Server-Side Rendering (SSR) là gì?", options: ["Render ở trình duyệt", "Render ở Server rồi gửi HTML về", "Render bằng database", "Máy chủ không cần render"], correctAnswer: 1 },
-    { text: "Cơ chế 'Reconciliation' là gì?", options: ["Sửa lỗi code", "Thuật toán so sánh Virtual DOM", "Kết nối Database", "Bảo mật ứng dụng"], correctAnswer: 1 },
-    { text: "Hydration trong Next.js là gì?", options: ["Làm sạch code", "Biến HTML tĩnh thành React app động trên client", "Tải ảnh nhanh", "Kết nối Wifi"], correctAnswer: 1 },
-    { text: "Custom Hook bắt đầu bằng từ khóa nào?", options: ["handle", "use", "get", "set"], correctAnswer: 1 },
-    { text: "React.lazy() dùng để làm gì?", options: ["Lười viết code", "Code-splitting và Lazy loading component", "Tăng kích thước file", "Dừng chạy app"], correctAnswer: 1 }
-];
+import { fetchQuestions } from '../../lib/trivia';
+import type { ProcessedQuestion } from '../../lib/trivia';
 
 interface Profile {
     display_name: string;
@@ -50,12 +15,17 @@ interface Profile {
 const GamePlayView = () => {
     const navigate = useNavigate();
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [timeLeft, setTimeLeft] = useState(30);
+    const [timeLeft, setTimeLeft] = useState(15);
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [isConfirmed, setIsConfirmed] = useState(false);
     const [modalType, setModalType] = useState<'exit' | 'surrender' | null>(null);
     const [gameStage, setGameStage] = useState<'preparing' | 'starting' | 'playing'>('preparing');
     const [introTimer, setIntroTimer] = useState(5);
+
+    // Trivia Data States
+    const [questions, setQuestions] = useState<ProcessedQuestion[]>([]);
+    const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
 
     // New Quiz States
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -72,24 +42,43 @@ const GamePlayView = () => {
     const [showSetResults, setShowSetResults] = useState(false);
     const [isMatchEnding, setIsMatchEnding] = useState(false);
 
+    // Refs for real-time score tracking in timeouts
+    const pointsRef = useRef({ user: 10, opponent: 10 });
+
     const currentRound = Math.floor(currentQuestionIndex / 10) + 1;
     const questionNumberInRound = (currentQuestionIndex % 10) + 1;
     const isEndOfRound = questionNumberInRound === 10;
-    const question = QUESTIONS[currentQuestionIndex];
+    const question = questions[currentQuestionIndex];
+    const hasFetched = useRef(false);
 
     useEffect(() => {
+        if (hasFetched.current) return;
+        hasFetched.current = true;
+
         const getData = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                setProfile(data);
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    setProfile(data);
+
+                    // Fetch questions now that we have user ID (for token management)
+                    const fetchedQuestions = await fetchQuestions(30, user.id);
+                    setQuestions(fetchedQuestions);
+                }
+                setIsLoadingQuestions(false);
+            } catch (error: unknown) {
+                console.error("Error initializing game:", error);
+                const message = error instanceof Error ? error.message : "Failed to load questions";
+                setFetchError(message);
+                setIsLoadingQuestions(false);
             }
         };
         getData();
     }, []);
 
     const handleAnswerSelect = useCallback((index: number) => {
-        if (isConfirmed || showTransition || isGameOver) return;
+        if (isConfirmed || showTransition || isGameOver || !question) return;
 
         setIsConfirmed(true);
         setSelectedAnswer(index);
@@ -105,6 +94,7 @@ const GamePlayView = () => {
         // Update total scores and CURRENT ROUND points
         setTimeout(() => {
             setUserScore(prev => prev + uPoints);
+            pointsRef.current.user += uPoints;
             setRoundPointsHistory(prev => ({ ...prev, user: prev.user + uPoints }));
             setShowTransition(true);
 
@@ -112,6 +102,7 @@ const GamePlayView = () => {
             const opponentDelay = 800 + Math.random() * 1000;
             setTimeout(() => {
                 setOpponentScore(prev => prev + oPoints);
+                pointsRef.current.opponent += oPoints;
                 setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + oPoints }));
                 setRoundPoints(prev => ({ ...prev, opponent: oPoints }));
             }, opponentDelay);
@@ -121,9 +112,9 @@ const GamePlayView = () => {
                 setShowTransition(false);
 
                 if (questionNumberInRound === 10) {
-                    // Set result logic - using local calculations to avoid stale state closures
-                    const finalUserRoundPoints = roundPointsHistory.user + uPoints;
-                    const finalOpponentRoundPoints = roundPointsHistory.opponent + oPoints;
+                    // Use ref values for final comparison to ensure we have the most recent data
+                    const finalUserRoundPoints = pointsRef.current.user;
+                    const finalOpponentRoundPoints = pointsRef.current.opponent;
                     const userWonSet = finalUserRoundPoints > finalOpponentRoundPoints;
                     const isRoundDraw = finalUserRoundPoints === finalOpponentRoundPoints;
                     
@@ -138,6 +129,7 @@ const GamePlayView = () => {
 
                     setTimeout(() => {
                         setShowSetResults(false);
+                        pointsRef.current = { user: 10, opponent: 10 };
                         setRoundPointsHistory({ user: 10, opponent: 10 });
                         setUserScore(10);
                         setOpponentScore(10);
@@ -146,7 +138,7 @@ const GamePlayView = () => {
                             setCurrentQuestionIndex(prev => prev + 1);
                             setShowRoundIntro(true);
                             setTimeout(() => setShowRoundIntro(false), 2000);
-                            setTimeLeft(30);
+                            setTimeLeft(15);
                             setIsConfirmed(false);
                             setSelectedAnswer(null);
                         } else {
@@ -158,9 +150,9 @@ const GamePlayView = () => {
                         }
                     }, 4000);
                 } else {
-                    if (currentQuestionIndex < QUESTIONS.length - 1) {
+                    if (currentQuestionIndex < questions.length - 1) {
                         setCurrentQuestionIndex(prev => prev + 1);
-                        setTimeLeft(30);
+                        setTimeLeft(15);
                         setIsConfirmed(false);
                         setSelectedAnswer(null);
                     } else {
@@ -169,16 +161,20 @@ const GamePlayView = () => {
                 }
             }, 4000);
         }, 2000);
-    }, [isConfirmed, showTransition, isGameOver, question.correctAnswer, currentQuestionIndex, roundPointsHistory, currentRound, questionNumberInRound]);
+    }, [isConfirmed, showTransition, isGameOver, question, currentQuestionIndex, currentRound, questionNumberInRound, questions.length]);
 
     useEffect(() => {
-        let timer: any;
+        let timer: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>;
         if (gameStage === 'preparing') {
             timer = setInterval(() => {
                 setIntroTimer(prev => {
                     if (prev <= 1) {
-                        setGameStage('starting');
-                        return 0;
+                        // Only move to starting if questions are loaded, otherwise stay at 1
+                        if (!isLoadingQuestions) {
+                            setGameStage('starting');
+                            return 0;
+                        }
+                        return 1; // Hang at 1 until loaded
                     }
                     return prev - 1;
                 });
@@ -191,7 +187,7 @@ const GamePlayView = () => {
             }, 1500);
         }
         return () => clearInterval(timer);
-    }, [gameStage]);
+    }, [gameStage, isLoadingQuestions]);
 
     useEffect(() => {
         if (timeLeft > 0 && !isConfirmed && gameStage === 'playing' && !showTransition && !isGameOver) {
@@ -206,6 +202,25 @@ const GamePlayView = () => {
             }, 0);
         }
     }, [timeLeft, isConfirmed, gameStage, showTransition, isGameOver, handleAnswerSelect]);
+
+
+    if (fetchError || (!isLoadingQuestions && questions.length === 0)) {
+        return (
+            <div className="h-screen bg-neutral-950 flex flex-col items-center justify-center gap-6 p-4">
+                <div className="p-6 bg-red-500/10 border border-red-500/20 rounded-3xl text-center max-w-md">
+                    <HelpCircle size={48} className="text-red-500 mx-auto mb-4" />
+                    <h2 className="text-xl font-bold text-white mb-2">Không thể tải câu hỏi</h2>
+                    <p className="text-gray-400 text-sm mb-6">{fetchError || "Đã xảy ra lỗi không xác định khi tải dữ liệu trận đấu."}</p>
+                    <button 
+                        onClick={() => navigate('/dashboard/arena')}
+                        className="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-wider rounded-2xl transition-all"
+                    >
+                        Quay lại Arena
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-screen bg-neutral-950 text-white p-4 md:p-8 flex flex-col animate-fade-in relative overflow-hidden">
@@ -248,8 +263,8 @@ const GamePlayView = () => {
                                 <circle 
                                     cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" 
                                     strokeDasharray={176}
-                                    strokeDashoffset={176 - (176 * timeLeft) / 30}
-                                    className={`transition-all duration-1000 ${timeLeft < 10 ? 'text-red-500' : 'text-fuchsia-500'}`}
+                                    strokeDashoffset={176 - (176 * timeLeft) / 15}
+                                    className={`transition-all duration-1000 ${timeLeft < 5 ? 'text-red-500' : 'text-fuchsia-500'}`}
                                 />
                             </svg>
                             <div className={`absolute text-xl font-black ${timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
@@ -312,13 +327,13 @@ const GamePlayView = () => {
                             Question 0{currentQuestionIndex + 1}
                         </div>
                         <h2 className="text-2xl md:text-4xl font-bold leading-tight text-white mb-2">
-                            "{question.text}"
+                            {question?.text || "..."}
                         </h2>
                     </div>
                 </div>
 
                 {/* Answers Grid */}
-                {gameStage === 'playing' ? (
+                {gameStage === 'playing' && question ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-10 duration-700">
                         {question.options.map((option: string, index: number) => (
                             <button
@@ -434,8 +449,8 @@ const GamePlayView = () => {
                             </div>
                             <div className="text-center">
                                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "HERO"}</h2>
-                                <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Score: 10</div>
+                                 <div className="flex justify-center gap-2 mt-2">
+                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Score: {userScore}</div>
                                 </div>
                             </div>
                         </div>
@@ -469,18 +484,21 @@ const GamePlayView = () => {
                             </div>
                             <div className="text-center">
                                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">CyberHunter_X</h2>
-                                <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Score: 10</div>
+                                 <div className="flex justify-center gap-2 mt-2">
+                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Score: {opponentScore}</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <div className="mt-20 flex flex-col items-center gap-4">
-                        <div className="px-8 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md">
+                        <div className="px-8 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md flex items-center gap-3">
                             <p className="text-xl md:text-2xl font-black text-gray-400 uppercase tracking-[0.3em] animate-pulse">
                                 {gameStage === 'preparing' ? 'Chuẩn bị trận đấu' : 'Trận đấu đang diễn ra'}
                             </p>
+                            {isLoadingQuestions && (
+                                <Loader2 size={20} className="animate-spin text-blue-500" />
+                            )}
                         </div>
                         <div className="flex gap-2">
                              {[1,2,3].map(i => (

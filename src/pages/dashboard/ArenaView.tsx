@@ -157,18 +157,35 @@ const ArenaView = () => {
 
 // --- Sub Components ---
 
-const ModeCard = ({ title, description, image, icon: Icon, color, features, isNew, onClick }: any) => {
-  const colorClasses: any = {
+interface ModeCardProps {
+  title: string;
+  description: string;
+  image: string;
+  icon: any;
+  color: 'fuchsia' | 'blue' | 'red';
+  features: string[];
+  isNew?: boolean;
+  onClick: () => void;
+}
+
+const ModeCard = ({ title, description, image, icon: Icon, color, features, isNew, onClick }: ModeCardProps) => {
+  const colorClasses: Record<string, string> = {
     fuchsia: "text-fuchsia-400 group-hover:text-fuchsia-300 bg-fuchsia-500",
     blue: "text-blue-400 group-hover:text-blue-300 bg-blue-500",
     red: "text-red-400 group-hover:text-red-300 bg-red-500",
   };
 
+  const titleColors: Record<string, string> = {
+    fuchsia: "group-hover:text-fuchsia-400",
+    blue: "group-hover:text-blue-400",
+    red: "group-hover:text-red-400",
+  };
+
   return (
-    <div className="group relative h-80 rounded-2xl overflow-hidden border border-white/10 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+    <div className="group relative h-86 rounded-2xl overflow-hidden border border-white/10 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,0,0,0.5)]">
       {/* Background Image */}
       <div className="absolute inset-0">
-        <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-40" />
+        <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-40 " />
         <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent"></div>
       </div>
 
@@ -184,8 +201,8 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
           <Icon size={24} />
         </div>
         
-        <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-fuchsia-400 transition-colors">{title}</h3>
-        <p className="text-gray-400 text-sm mb-6 line-clamp-2">{description}</p>
+        <h3 className={`text-2xl font-bold text-white mb-2 transition-colors ${titleColors[color]}`}>{title}</h3>
+        <p className="text-gray-400 text-sm mb-6 line-clamp-2 ">{description}</p>
         
         <div className="space-y-2 mb-6">
           {features.map((feat: string, idx: number) => (
@@ -202,7 +219,7 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
           }}
           className={`w-full py-3 rounded-xl font-bold text-white bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 transition-colors flex items-center justify-center gap-2 group-hover:bg-gradient-to-r ${color === 'fuchsia' ? 'from-fuchsia-600 to-purple-600' : color === 'red' ? 'from-red-600 to-orange-600' : 'from-blue-600 to-cyan-600'}`}
         >
-          <Play size={16} fill="currentColor" /> Bắt đầu
+          <Play size={16} fill="currentColor" /> Chơi ngay
         </button>
       </div>
     </div>
@@ -210,7 +227,15 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
 }
 
 
-const LobbyRow = ({ name, mode, map, players, isPrivate }: any) => (
+interface LobbyRowProps {
+  name: string;
+  mode: string;
+  map: string;
+  players: string;
+  isPrivate?: boolean;
+}
+
+const LobbyRow = ({ name, mode, map, players, isPrivate }: LobbyRowProps) => (
   <div className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-white/5 transition-colors cursor-pointer group">
     <div className="col-span-4 flex items-center gap-3">
       {isPrivate ? <Lock size={14} className="text-red-400" /> : <div className="w-3.5" />}
