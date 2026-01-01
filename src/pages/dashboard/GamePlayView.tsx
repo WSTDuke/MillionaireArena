@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
@@ -14,8 +14,14 @@ interface Profile {
 
 const GamePlayView = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const mode = searchParams.get('mode') || 'Normal';
+    const isRanked = mode.toLowerCase() === 'ranked';
+    const isDeathmatch = mode.toLowerCase() === 'deathmatch';
+    const QUESTION_TIME = isDeathmatch ? 10 : 15;
+
     const [profile, setProfile] = useState<Profile | null>(null);
-    const [timeLeft, setTimeLeft] = useState(15);
+    const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [isConfirmed, setIsConfirmed] = useState(false);
     const [modalType, setModalType] = useState<'exit' | 'surrender' | null>(null);
@@ -62,11 +68,57 @@ const GamePlayView = () => {
                     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
                     setProfile(data);
 
-                    // Fetch questions now that we have user ID (for token management)
-                    const fetchedQuestions = await fetchQuestions(30, user.id);
-                    setQuestions(fetchedQuestions);
+                    // Start fetching based on Mode logic
+                    if (isRanked) {
+                         // RANKED: Bo5 (5 Rounds)
+                         // Round 1-2: Easy
+                         // Round 3-4: Normal
+                         // Round 5: Hard
+                        const r1 = await fetchQuestions(10, 'easy', user.id);
+                        setQuestions(r1);
+                        setIsLoadingQuestions(false);
+
+                        (async () => {
+                            try {
+                                const r2 = await fetchQuestions(10, 'easy', user.id);
+                                setQuestions(prev => [...prev, ...r2]);
+                                
+                                const r3 = await fetchQuestions(10, 'medium', user.id);
+                                setQuestions(prev => [...prev, ...r3]);
+
+                                const r4 = await fetchQuestions(10, 'medium', user.id);
+                                setQuestions(prev => [...prev, ...r4]);
+
+                                const r5 = await fetchQuestions(10, 'hard', user.id);
+                                setQuestions(prev => [...prev, ...r5]);
+                            } catch (bgError) {
+                                console.error("Background question fetch failed:", bgError);
+                            }
+                        })();
+                    } else {
+                        // NORMAL & DEATHMATCH: Bo3 (3 Rounds) - Easy, Easy, Normal
+                        // Deathmatch has reduced time (handled by QUESTION_TIME) but same question difficulty
+                        const r1 = await fetchQuestions(10, 'easy', user.id);
+                        setQuestions(r1);
+                        setIsLoadingQuestions(false);
+
+                        // Background Fetch: Round 2 (Easy) & Round 3 (Medium)
+                        (async () => {
+                            try {
+                                const r2 = await fetchQuestions(10, 'easy', user.id);
+                                setQuestions(prev => [...prev, ...r2]);
+                                
+                                const r3 = await fetchQuestions(10, 'medium', user.id);
+                                setQuestions(prev => [...prev, ...r3]);
+                            } catch (bgError) {
+                                console.error("Background question fetch failed:", bgError);
+                            }
+                        })();
+                    }
+
+                } else {
+                     setIsLoadingQuestions(false);
                 }
-                setIsLoadingQuestions(false);
             } catch (error: unknown) {
                 console.error("Error initializing game:", error);
                 const message = error instanceof Error ? error.message : "Failed to load questions";
@@ -75,7 +127,7 @@ const GamePlayView = () => {
             }
         };
         getData();
-    }, []);
+    }, [isRanked, isDeathmatch]);
 
     const handleAnswerSelect = useCallback((index: number) => {
         if (isConfirmed || showTransition || isGameOver || !question) return;
@@ -118,14 +170,24 @@ const GamePlayView = () => {
                     const userWonSet = finalUserRoundPoints > finalOpponentRoundPoints;
                     const isRoundDraw = finalUserRoundPoints === finalOpponentRoundPoints;
                     
+                    let newSetScores = { ...setScores };
+
                     if (!isRoundDraw) {
-                        setSetScores(prev => ({
-                            user: userWonSet ? prev.user + 1 : prev.user,
-                            opponent: userWonSet ? prev.opponent : prev.opponent + 1
-                        }));
+                        newSetScores = {
+                            user: userWonSet ? setScores.user + 1 : setScores.user,
+                            opponent: userWonSet ? setScores.opponent : setScores.opponent + 1
+                        };
+                        setSetScores(newSetScores);
                     }
                     
                     setShowSetResults(true);
+
+                    // Check for Victory Condition
+                    // Bo3: First to 2
+                    // Bo5 (Ranked): First to 3
+                    const winsNeeded = isRanked ? 3 : 2;
+                    const hasWinner = newSetScores.user >= winsNeeded || newSetScores.opponent >= winsNeeded;
+                    const maxRounds = isRanked ? 5 : 3;
 
                     setTimeout(() => {
                         setShowSetResults(false);
@@ -134,11 +196,12 @@ const GamePlayView = () => {
                         setUserScore(10);
                         setOpponentScore(10);
 
-                        if (currentRound < 3) {
+                        // If not declared winner yet AND we have rounds left
+                        if (!hasWinner && currentRound < maxRounds) {
                             setCurrentQuestionIndex(prev => prev + 1);
                             setShowRoundIntro(true);
                             setTimeout(() => setShowRoundIntro(false), 2000);
-                            setTimeLeft(15);
+                            setTimeLeft(QUESTION_TIME);
                             setIsConfirmed(false);
                             setSelectedAnswer(null);
                         } else {
@@ -152,7 +215,7 @@ const GamePlayView = () => {
                 } else {
                     if (currentQuestionIndex < questions.length - 1) {
                         setCurrentQuestionIndex(prev => prev + 1);
-                        setTimeLeft(15);
+                        setTimeLeft(QUESTION_TIME);
                         setIsConfirmed(false);
                         setSelectedAnswer(null);
                     } else {
@@ -161,7 +224,7 @@ const GamePlayView = () => {
                 }
             }, 4000);
         }, 2000);
-    }, [isConfirmed, showTransition, isGameOver, question, currentQuestionIndex, currentRound, questionNumberInRound, questions.length]);
+    }, [isConfirmed, showTransition, isGameOver, question, currentQuestionIndex, currentRound, questionNumberInRound, questions.length, setScores, isRanked, QUESTION_TIME]);
 
     useEffect(() => {
         let timer: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>;
@@ -263,7 +326,7 @@ const GamePlayView = () => {
                                 <circle 
                                     cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" 
                                     strokeDasharray={176}
-                                    strokeDashoffset={176 - (176 * timeLeft) / 15}
+                                    strokeDashoffset={176 - (176 * timeLeft) / QUESTION_TIME}
                                     className={`transition-all duration-1000 ${timeLeft < 5 ? 'text-red-500' : 'text-fuchsia-500'}`}
                                 />
                             </svg>

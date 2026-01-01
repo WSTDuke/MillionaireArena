@@ -145,6 +145,7 @@ async function translateBatchWithGemini(texts: string[]): Promise<string[]> {
  */
 export async function fetchQuestions(
     amount: number = 30, 
+    difficulty: string | null = null,
     userId?: string, 
     retries: number = 3
 ): Promise<ProcessedQuestion[]> {
@@ -178,7 +179,7 @@ export async function fetchQuestions(
         }
     }
 
-    const url = `https://opentdb.com/api.php?amount=${amount}${token ? `&token=${token}` : ''}&type=multiple`;
+    const url = `https://opentdb.com/api.php?amount=${amount}${token ? `&token=${token}` : ''}&type=multiple${difficulty ? `&difficulty=${difficulty}` : ''}`;
     
     const nowTime = Date.now();
     const timeSinceLastRequest = nowTime - lastRequestTime;
@@ -200,7 +201,7 @@ export async function fetchQuestions(
         if (res.status === 429) {
             if (retries > 0) {
                 await sleep(MIN_REQUEST_INTERVAL);
-                return fetchQuestions(amount, userId, retries - 1);
+                return fetchQuestions(amount, difficulty, userId, retries - 1);
             }
             isFetchingQuestions = false;
             throw new Error("Too many requests to Trivia API. Please wait a moment and try again.");
@@ -259,10 +260,10 @@ export async function fetchQuestions(
             return translatedQuestions;
         } else if (data.response_code === 5 && retries > 0) {
             await sleep(MIN_REQUEST_INTERVAL);
-            return fetchQuestions(amount, userId, retries - 1);
+            return fetchQuestions(amount, difficulty, userId, retries - 1);
         } else if (data.response_code === 4 && userId) {
             await fetch(`https://opentdb.com/api_token.php?command=reset&token=${token}`);
-            const result = await fetchQuestions(amount, userId, retries); 
+            const result = await fetchQuestions(amount, difficulty, userId, retries); 
             isFetchingQuestions = false;
             return result;
         }

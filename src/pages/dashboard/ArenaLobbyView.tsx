@@ -7,40 +7,67 @@ const ArenaLobbyView = () => {
     const [searchParams] = useSearchParams();
     const { user, profile } = useOutletContext<any>();
     const mode = searchParams.get('mode') || 'Normal';
-    const [searching] = useState(true);
+    
+    // State for manual matchmaking
+    const [searching, setSearching] = useState(false);
     const [timer, setTimer] = useState(0);
     const [matchFound, setMatchFound] = useState(false);
     const [opponent, setOpponent] = useState<any>(null);
-    const [navigateTriggered, setNavigateTriggered] = useState(false);
 
     const displayName = profile?.display_name || profile?.full_name || user?.user_metadata?.full_name || "User";
     const avatarUrl = profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback";
 
+    // Timer effect
     useEffect(() => {
         let interval: any;
-        if (searching && !navigateTriggered) {
+        if (searching && !matchFound) {
             interval = setInterval(() => {
                 setTimer(prev => prev + 1);
             }, 1000);
         }
         return () => clearInterval(interval);
-    }, [searching, navigateTriggered]);
+    }, [searching, matchFound]);
 
+    // Match found simulation
     useEffect(() => {
-        if (timer === 5 && !matchFound) {
-            setMatchFound(true);
-            setOpponent({
-                display_name: "CyberHunter_X",
-                avatar_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=opponent",
-                mmr: 10
-            });
+        if (searching && timer >= 5 && !matchFound) {
+            // Fix: Wrap in timeout to avoid synchronous state update in effect
+            const t = setTimeout(() => {
+                setMatchFound(true);
+                setOpponent({
+                    display_name: "CyberHunter_X",
+                    avatar_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=opponent",
+                    mmr: 10
+                });
+            }, 0);
+            return () => clearTimeout(t);
         }
-        
-        if (timer === 7 && !navigateTriggered) {
-             setNavigateTriggered(true);
-             navigate(`/gameplay?mode=${mode}`);
-        }
-    }, [timer, mode, navigate, matchFound, navigateTriggered]);
+    }, [searching, timer, matchFound]);
+
+    const handleFindMatch = () => {
+        setSearching(true);
+        setMatchFound(false);
+        setTimer(0);
+        setOpponent(null);
+    };
+
+    const handleCancelSearch = () => {
+        setSearching(false);
+        setMatchFound(false);
+        setTimer(0);
+        setOpponent(null);
+    };
+
+    const handleDeclineMatch = () => {
+        setSearching(false);
+        setMatchFound(false);
+        setTimer(0);
+        setOpponent(null);
+    };
+
+    const handleAcceptMatch = () => {
+        navigate(`/gameplay?mode=${mode}`);
+    };
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -80,7 +107,7 @@ const ArenaLobbyView = () => {
     const details = getModeDetails();
 
     return (
-        <div className="min-h-screen bg-neutral-950 text-white p-4 md:p-8 animate-fade-in">
+        <div className="fixed inset-0 z-[100] bg-neutral-950 text-white p-4 md:p-8 animate-fade-in overflow-y-auto">
             {/* Header */}
             <div className="flex justify-between items-center mb-12">
                 <button 
@@ -88,7 +115,7 @@ const ArenaLobbyView = () => {
                     className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
                 >
                     <X size={20} className="group-hover:rotate-90 transition-transform" />
-                    <span className="font-bold text-sm uppercase tracking-wider">Hủy tìm trận</span>
+                    <span className="font-bold text-sm uppercase tracking-wider">Quay lại đấu trường</span>
                 </button>
 
                 <div className="flex items-center gap-4 bg-neutral-900 border border-white/5 px-6 py-2 rounded-full backdrop-blur-md">
@@ -115,7 +142,7 @@ const ArenaLobbyView = () => {
                     </h1>
                     
                     <p className="text-gray-400 text-lg leading-relaxed">
-                        Đang tìm kiếm đối thủ xứng tầm. Hệ thống đang quét qua 1,240 người chơi đang online để chọn ra những chiến binh phù hợp nhất.
+                        {searching ? "Đang tìm kiếm đối thủ xứng tầm. Hệ thống đang quét qua 1,240 người chơi để chọn ra những chiến binh phù hợp nhất." : "Sẵn sàng tham chiến? Hãy bấm nút tìm trận để bắt đầu hành trình của bạn."}
                     </p>
 
                     <div className="grid grid-cols-2 gap-4 pt-4">
@@ -125,44 +152,93 @@ const ArenaLobbyView = () => {
                         </div>
                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl">
                              <div className="text-gray-500 text-xs font-bold uppercase mb-1">Thời gian đã trôi qua</div>
-                             <div className={`text-2xl font-bold ${details.color} animate-pulse`}>
+                             <div className={`text-2xl font-bold ${details.color} ${searching ? 'animate-pulse' : ''}`}>
                                  {formatTime(timer)}
                              </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Middle Column: Visual Effect */}
-                <div className="flex justify-center relative">
-                    <div className={`absolute inset-0 bg-gradient-to-r ${details.bg} rounded-full blur-[120px] opacity-30 animate-pulse`}></div>
-                    <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 rounded-full border-4 border-white/5 flex items-center justify-center p-4">
-                        <div className="absolute inset-0 border-4 border-dotted border-white/10 rounded-full animate-[spin_20s_linear_infinite]"></div>
-                        <div className={`w-full h-full rounded-full bg-gradient-to-br ${matchFound ? 'from-green-600/20 to-emerald-600/20' : details.bg} border-2 ${matchFound ? 'border-green-500/30' : details.border} flex flex-col items-center justify-center gap-4 shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500`}>
-                             <div className="relative">
-                                 {matchFound ? (
-                                     <div className="flex flex-col items-center gap-2 animate-bounce">
-                                         <Swords size={64} className="text-green-500" strokeWidth={1} />
-                                     </div>
-                                 ) : (
-                                     <>
-                                         <Loader2 size={64} className={`${details.color} animate-spin`} strokeWidth={1} />
-                                         <details.icon size={32} className={`absolute inset-0 m-auto ${details.color}`} />
-                                     </>
-                                 )}
-                             </div>
-                             <div className="text-center">
-                                 <div className={`text-sm font-black uppercase tracking-[0.2em] mb-1 ${matchFound ? 'text-green-500 animate-pulse' : ''}`}>
-                                     {matchFound ? 'Match Found!' : 'Searching'}
+                {/* Middle Column: Visual Effect & Controls */}
+                <div className="flex flex-col items-center gap-8 relative">
+                    <div className="relative">
+                        <div className={`absolute inset-0 bg-gradient-to-r ${details.bg} rounded-full blur-[120px] opacity-30 ${searching ? 'animate-pulse' : ''}`}></div>
+                        <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 rounded-full border-4 border-white/5 flex items-center justify-center p-4">
+                            {searching && !matchFound && (
+                                <div className="absolute inset-0 border-4 border-dotted border-white/10 rounded-full animate-[spin_20s_linear_infinite]"></div>
+                            )}
+                            <div className={`w-full h-full rounded-full bg-gradient-to-br ${matchFound ? 'from-green-600/20 to-emerald-600/20' : details.bg} border-2 ${matchFound ? 'border-green-500/30' : details.border} flex flex-col items-center justify-center gap-4 shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-500`}>
+                                 <div className="relative">
+                                     {matchFound ? (
+                                         <div className="flex flex-col items-center gap-2 animate-bounce">
+                                             <Swords size={64} className="text-green-500" strokeWidth={1} />
+                                         </div>
+                                     ) : (
+                                         <>
+                                             {searching ? (
+                                                 <Loader2 size={64} className={`${details.color} animate-spin`} strokeWidth={1} />
+                                             ) : (
+                                                 <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center animate-pulse">
+                                                     <details.icon size={32} className={details.color} />
+                                                 </div>
+                                             )}
+                                         </>
+                                     )}
                                  </div>
-                                 {!matchFound && (
-                                     <div className="flex justify-center gap-1">
-                                         <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.3s]"></div>
-                                         <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.15s]"></div>
-                                         <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce"></div>
+                                 <div className="text-center">
+                                     <div className={`text-sm font-black uppercase tracking-[0.2em] mb-1 ${matchFound ? 'text-green-500 animate-pulse' : ''}`}>
+                                         {matchFound ? 'Match Found!' : searching ? 'Searching' : 'Idle'}
                                      </div>
-                                 )}
-                             </div>
+                                     {searching && !matchFound && (
+                                         <div className="flex justify-center gap-1">
+                                             <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.3s]"></div>
+                                             <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce [animation-delay:-0.15s]"></div>
+                                             <div className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce"></div>
+                                         </div>
+                                     )}
+                                 </div>
+                            </div>
                         </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="relative z-20 flex flex-col items-center gap-4 w-full max-w-sm">
+                        {matchFound ? (
+                            <div className="flex w-full gap-4 animate-in slide-in-from-bottom-5 fade-in duration-300">
+                                <button
+                                    onClick={handleDeclineMatch}
+                                    className="flex-1 py-4 rounded-xl bg-black/50 hover:bg-red-900/20 text-gray-400 hover:text-red-400 font-bold uppercase tracking-widest transition-all border border-white/10 hover:border-red-500/50 backdrop-blur-md group"
+                                >
+                                    <span className="group-hover:scale-105 inline-block transition-transform">Từ chối</span>
+                                </button>
+                                <button
+                                    onClick={handleAcceptMatch}
+                                    className="flex-1 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black uppercase tracking-widest transition-all shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_50px_rgba(16,185,129,0.6)] border border-emerald-500/50 active:scale-95 group relative overflow-hidden"
+                                >
+                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                                    <span className="relative z-10 group-hover:scale-110 inline-block transition-transform">Chấp nhận</span>
+                                </button>
+                            </div>
+                        ) : searching ? (
+                            <button
+                                onClick={handleCancelSearch}
+                                className="w-full py-4 rounded-xl bg-red-950/30 hover:bg-red-900/50 text-red-500 font-bold uppercase tracking-[0.2em] transition-all border border-red-500/30 hover:border-red-500 hover:shadow-[0_0_30px_rgba(239,68,68,0.2)] active:scale-95 backdrop-blur-md group"
+                            >
+                                <span className="group-hover:animate-pulse">Hủy tìm trận</span>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleFindMatch}
+                                className={`w-full py-5 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black uppercase tracking-[0.25em] text-lg transition-all shadow-[0_0_40px_rgba(6,182,212,0.4)] hover:shadow-[0_0_60px_rgba(6,182,212,0.6)] border border-cyan-400/30 hover:scale-105 active:scale-95 group relative overflow-hidden`}
+                            >
+                                <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:250%_250%,100%_100%] bg-[position:-100%_0,0_0] bg-no-repeat transition-[background-position_0s_ease] hover:bg-[position:200%_0,0_0] duration-[1000ms]"></div>
+                                <span className="relative z-10 flex items-center justify-center gap-3">
+                                    <span className="hidden group-hover:inline-block animate-in fade-in slide-in-from-left-2">►</span>
+                                    Tìm trận
+                                    <span className="hidden group-hover:inline-block animate-in fade-in slide-in-from-right-2">◄</span>
+                                </span>
+                            </button>
+                        )}
                     </div>
                 </div>
 

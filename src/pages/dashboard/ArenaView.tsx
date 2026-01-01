@@ -46,17 +46,6 @@ const ArenaView = () => {
 
       {/* Game Modes Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Ranked Mode */}
-        <ModeCard 
-          title="Xếp hạng (Ranked)"
-          description="Leo tháp danh vọng, khẳng định đẳng cấp."
-          image="https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"
-          icon={Trophy}
-          color="fuchsia"
-          features={["Cấm/Chọn", "5v5 Competitive", "Tính điểm MMR"]}
-          onClick={() => handleStartMode('Ranked')}
-        />
-        
         {/* Normal Mode */}
         <ModeCard 
           title="Đấu thường (Normal)"
@@ -64,18 +53,29 @@ const ArenaView = () => {
           image="https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"
           icon={Swords}
           color="blue"
-          features={["Chọn ẩn", "Thoải mái", "Không tính Rank"]}
+          features={["Thể thức: Bo3", "Thoải mái", "Không tính Rank"]}
           onClick={() => handleStartMode('Normal')}
+        />
+
+        {/* Ranked Mode */}
+        <ModeCard 
+          title="Xếp hạng (Ranked)"
+          description="Leo tháp danh vọng, khẳng định đẳng cấp."
+          image="https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"
+          icon={Trophy}
+          color="fuchsia"
+          features={["Thể thức: Bo5", "Tranh hạng", "Tính điểm MMR"]}
+          onClick={() => handleStartMode('Ranked')}
         />
 
         {/* Special/Event Mode */}
         <ModeCard 
           title="Tử chiến (Deathmatch)"
-          description="Chế độ sinh tồn, duy nhất 1 người sống sót."
+          description="Suy nghĩ nhanh chóng-đưa ra kết quả chính xác."
           image="https://images.unsplash.com/photo-1538481199705-c710c4e965fc?q=80&w=1965&auto=format&fit=crop"
           icon={Zap}
           color="red"
-          features={["Solo Free-for-all", "Nhịp độ cao", "Limited Time"]}
+          features={["Thể thức: Bo3", "Nhịp độ cao", "Limited Time"]}
           isNew
           onClick={() => handleStartMode('Deathmatch')}
         />
@@ -182,7 +182,7 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
   };
 
   return (
-    <div className="group relative h-86 rounded-2xl overflow-hidden border border-white/10 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+    <div className="group relative h-90 rounded-2xl overflow-hidden border border-white/10 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,0,0,0.5)]">
       {/* Background Image */}
       <div className="absolute inset-0">
         <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-40 " />
