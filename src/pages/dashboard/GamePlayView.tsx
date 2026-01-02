@@ -75,6 +75,8 @@ const GamePlayView = () => {
     const bufferedOpponentAnswers = useRef<Map<number, { isCorrect: boolean; points: number }>>(new Map());
     const currIndexRef = useRef<number>(0);
     const isConfirmedRef = useRef<boolean>(false);
+    const winsNeededRef = useRef<number>(1);
+    const surrenderProcessedRef = useRef<boolean>(false);
 
     const roomId = searchParams.get('roomId');
     const [roomSettings, setRoomSettings] = useState<{ questions_per_round?: number; format?: string; max_rounds?: number } | null>(null);
@@ -172,6 +174,36 @@ const GamePlayView = () => {
         }
     }, [roomId]);
 
+    const handleSurrender = useCallback(async () => {
+        if (!userId) return;
+        
+        // 1. Broadcast surrender to opponent
+        if (channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'player_surrendered',
+                payload: { userId }
+            });
+        }
+
+        if (surrenderProcessedRef.current) return;
+        surrenderProcessedRef.current = true;
+
+        // 2. Set self as loser (Opponent gets +1)
+        setSetScores(prev => ({
+            ...prev,
+            opponent: prev.opponent + 1
+        }));
+
+        // 3. Trigger Game Over sequence
+        setIsMatchEnding(true);
+        setTimeout(() => {
+            setIsGameOver(true);
+            setIsMatchEnding(false);
+            setModalType(null);
+        }, 2000);
+    }, [userId]);
+
     useEffect(() => {
         leaveRoomRef.current = leaveRoom;
     }, [leaveRoom]);
@@ -180,6 +212,7 @@ const GamePlayView = () => {
     useEffect(() => {
         currIndexRef.current = currentQuestionIndex;
         isConfirmedRef.current = isConfirmed;
+        winsNeededRef.current = winsNeeded;
         
         // Broadcast a "heartbeat" to let opponent know we are on this question
         if (channelRef.current && channelRef.current.state === 'joined') {
@@ -189,7 +222,7 @@ const GamePlayView = () => {
                 payload: { userId, qIndex: currentQuestionIndex }
             });
         }
-    }, [currentQuestionIndex, userId, isConfirmed]);
+    }, [currentQuestionIndex, userId, isConfirmed, winsNeeded]);
 
     // --- REALTIME ANSWER SYNC ---
     useEffect(() => {
@@ -243,6 +276,28 @@ const GamePlayView = () => {
                                 setOpponentAnswered({ isCorrect: false, points: 0 });
                             }
                         }
+                    }
+                })
+                .on('broadcast', { event: 'player_surrendered' }, ({ payload }: { payload: { userId: string } }) => {
+                    const { userId: surrenderingId } = payload;
+                    if (surrenderingId !== user.id) {
+                        if (surrenderProcessedRef.current) return;
+                        surrenderProcessedRef.current = true;
+                        
+                        console.log("Realtime: Opponent surrendered! You win.");
+                        
+                        // Current player wins
+                        setSetScores(prev => ({
+                            ...prev,
+                            user: prev.user + 1
+                        }));
+
+                        // Trigger Game Over sequence
+                        setIsMatchEnding(true);
+                        setTimeout(() => {
+                            setIsGameOver(true);
+                            setIsMatchEnding(false);
+                        }, 2000);
                     }
                 })
                 .subscribe((status: string) => {
@@ -725,11 +780,7 @@ const GamePlayView = () => {
                                     Tiếp tục đấu
                                 </button>
                                 <button 
-                                    onClick={async () => {
-                                        setIsNavigatingAway(true);
-                                        await leaveRoom();
-                                        navigate('/dashboard/arena');
-                                    }}
+                                    onClick={handleSurrender}
                                     className={`px-6 py-4 rounded-2xl ${modalType === 'exit' ? 'bg-red-600 hover:bg-red-500 shadow-red-600/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'} text-white font-black uppercase tracking-wider shadow-lg transition-all active:scale-95`}
                                 >
                                     {modalType === 'exit' ? 'Thoát' : 'Đầu hàng'}
