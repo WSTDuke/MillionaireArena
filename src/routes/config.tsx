@@ -11,23 +11,40 @@ import TournamentsView from "../pages/dashboard/TournamentsView"
 import ClanView from "../pages/dashboard/ClanView"
 import Home from "../pages/home/HomePage"
 import RankingView from "../pages/dashboard/RankingView"
+import { ProtectedRoute, GuestRoute } from "../components/auth/AuthGuard"
 
 export const routes = [
   {
     path: "/",
-    element: Home,
+    element: () => (
+      <GuestRoute>
+        <Home />
+      </GuestRoute>
+    ),
   },
   {
     path: "/login",
-    element: AuthLogin,
+    element: () => (
+      <GuestRoute>
+        <AuthLogin />
+      </GuestRoute>
+    ),
   },
   {
     path: "/signup",
-    element: AuthSignUp,
+    element: () => (
+      <GuestRoute>
+        <AuthSignUp />
+      </GuestRoute>
+    ),
   },
   {
     path: "/dashboard",
-    element: DashboardPage,
+    element: () => (
+      <ProtectedRoute>
+        <DashboardPage />
+      </ProtectedRoute>
+    ),
     children: [
       {
         path: "",
