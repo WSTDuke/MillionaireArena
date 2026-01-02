@@ -3,7 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { Link } from 'react-router-dom';
 import { 
   Trophy, Swords, Target, Clock, Zap, Medal, 
-  Share2, Edit3, Calendar, Award
+  Share2, Edit3, Calendar, Award,
+  Bookmark
 } from 'lucide-react';
 import { ProfilePageSkeleton } from '../../components/LoadingSkeletons';
 
@@ -162,7 +163,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
             <div className="flex flex-col items-center justify-center py-4">
               <div className="w-32 h-32 relative mb-4">
                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Trophy size={64} className="text-fuchsia-400 drop-shadow-[0_0_15px_rgba(192,38,211,0.5)]" />
+                    <Bookmark size={64} className="text-fuchsia-400 drop-shadow-[0_0_15px_rgba(192,38,211,0.5)]" />
                  </div>
                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                     <path className="text-neutral-800" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="2" />

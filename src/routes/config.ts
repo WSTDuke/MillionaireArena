@@ -10,6 +10,7 @@ import GamePlayView from "../pages/dashboard/GamePlayView"
 import TournamentsView from "../pages/dashboard/TournamentsView"
 import ClanView from "../pages/dashboard/ClanView"
 import Home from "../pages/home/HomePage"
+import RankingView from "../pages/dashboard/RankingView"
 
 export const routes = [
   {
@@ -55,6 +56,10 @@ export const routes = [
       {
         path: "clan", 
         element: ClanView,
+      },
+      {
+        path: "ranking", 
+        element: RankingView,
       }
     ]
   },

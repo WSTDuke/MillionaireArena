@@ -125,7 +125,7 @@ const SignUpPage = () => {
                 </div>
               </form>
 
-              <div className="mt-10 text-center text-sm text-gray-500">
+              <div className="text-center text-sm text-gray-500">
                  Đã là thành viên? <a href="/login" className="text-fuchsia-500 hover:text-fuchsia-400 font-bold hover:underline">Đăng nhập ngay</a>
               </div>
             </>

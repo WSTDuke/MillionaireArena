@@ -17,6 +17,7 @@ import {
   LogOut,
   Users,
   ChevronRight,
+  Bookmark,
 } from "lucide-react";
 
 const DashboardPage = () => {
@@ -87,12 +88,19 @@ const DashboardPage = () => {
               to="/dashboard/arena"
               active={isLinkActive("/dashboard/arena")}
             />
+             <NavItem
+              icon={Bookmark}
+              label="Xếp hạng"
+              to="/dashboard/ranking"
+              active={isLinkActive("/dashboard/ranking")}
+            />
             <NavItem
               icon={Trophy}
               label="Giải đấu"
               to="/dashboard/tournaments"
               active={isLinkActive("/dashboard/tournaments")}
             />
+           
             <NavItem
               icon={Users}
               label="Clan / Đội"

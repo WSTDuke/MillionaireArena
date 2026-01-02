@@ -51,9 +51,17 @@ const GamePlayView = () => {
     // Refs for real-time score tracking in timeouts
     const pointsRef = useRef({ user: 10, opponent: 10 });
 
-    const currentRound = Math.floor(currentQuestionIndex / 10) + 1;
-    const questionNumberInRound = (currentQuestionIndex % 10) + 1;
-    const isEndOfRound = questionNumberInRound === 10;
+    const roomId = searchParams.get('roomId');
+    const [roomSettings, setRoomSettings] = useState<any>(null);
+
+    const questionsPerRound = roomSettings?.questions_per_round || 10;
+    const matchFormat = roomSettings?.format || (isRanked ? 'Bo5' : 'Bo3');
+    const maxRounds = matchFormat === 'Bo5' ? 5 : (matchFormat === 'Bo3' ? 3 : 1);
+    const winsNeeded = Math.ceil(maxRounds / 2);
+
+    const currentRound = Math.floor(currentQuestionIndex / questionsPerRound) + 1;
+    const questionNumberInRound = (currentQuestionIndex % questionsPerRound) + 1;
+    const isEndOfRound = questionNumberInRound === questionsPerRound;
     const question = questions[currentQuestionIndex];
     const hasFetched = useRef(false);
 
@@ -65,55 +73,79 @@ const GamePlayView = () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
-                    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                    setProfile(data);
+                    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    setProfile(profileData);
+
+                    let qCount = 10;
+                    let format = isRanked ? 'Bo5' : 'Bo3';
+
+                    // Fetch Room data if exists
+                    if (roomId) {
+                        const { data: roomData, error: roomError } = await supabase
+                            .from('rooms')
+                            .select('settings')
+                            .eq('id', roomId)
+                            .single();
+                        
+                        if (roomData?.settings) {
+                            setRoomSettings(roomData.settings);
+                            qCount = roomData.settings.questions_per_round || 10;
+                            format = roomData.settings.format || format;
+                        }
+                        if (roomError) console.error("Error fetching room settings:", roomError);
+                    }
+
+                    const gameMaxRounds = format === 'Bo5' ? 5 : (format === 'Bo3' ? 3 : 1);
 
                     // Start fetching based on Mode logic
-                    if (isRanked) {
-                         // RANKED: Bo5 (5 Rounds)
-                         // Round 1-2: Easy
-                         // Round 3-4: Normal
-                         // Round 5: Hard
-                        const r1 = await fetchQuestions(10, 'easy', user.id);
+                    if (isRanked || format === 'Bo5') {
+                        // Bo5 (5 Rounds)
+                        const r1 = await fetchQuestions(qCount, 'easy', user.id);
                         setQuestions(r1);
                         setIsLoadingQuestions(false);
 
                         (async () => {
                             try {
-                                const r2 = await fetchQuestions(10, 'easy', user.id);
+                                const r2 = await fetchQuestions(qCount, 'easy', user.id);
                                 setQuestions(prev => [...prev, ...r2]);
                                 
-                                const r3 = await fetchQuestions(10, 'medium', user.id);
+                                const r3 = await fetchQuestions(qCount, 'medium', user.id);
                                 setQuestions(prev => [...prev, ...r3]);
 
-                                const r4 = await fetchQuestions(10, 'medium', user.id);
-                                setQuestions(prev => [...prev, ...r4]);
+                                if (gameMaxRounds >= 4) {
+                                    const r4 = await fetchQuestions(qCount, 'medium', user.id);
+                                    setQuestions(prev => [...prev, ...r4]);
+                                }
 
-                                const r5 = await fetchQuestions(10, 'hard', user.id);
-                                setQuestions(prev => [...prev, ...r5]);
+                                if (gameMaxRounds >= 5) {
+                                    const r5 = await fetchQuestions(qCount, 'hard', user.id);
+                                    setQuestions(prev => [...prev, ...r5]);
+                                }
                             } catch (bgError) {
                                 console.error("Background question fetch failed:", bgError);
                             }
                         })();
                     } else {
-                        // NORMAL & DEATHMATCH: Bo3 (3 Rounds) - Easy, Easy, Normal
-                        // Deathmatch has reduced time (handled by QUESTION_TIME) but same question difficulty
-                        const r1 = await fetchQuestions(10, 'easy', user.id);
+                        // Bo3 or Bo1
+                        const r1 = await fetchQuestions(qCount, 'easy', user.id);
                         setQuestions(r1);
                         setIsLoadingQuestions(false);
 
-                        // Background Fetch: Round 2 (Easy) & Round 3 (Medium)
-                        (async () => {
-                            try {
-                                const r2 = await fetchQuestions(10, 'easy', user.id);
-                                setQuestions(prev => [...prev, ...r2]);
-                                
-                                const r3 = await fetchQuestions(10, 'medium', user.id);
-                                setQuestions(prev => [...prev, ...r3]);
-                            } catch (bgError) {
-                                console.error("Background question fetch failed:", bgError);
-                            }
-                        })();
+                        if (gameMaxRounds > 1) {
+                            (async () => {
+                                try {
+                                    const r2 = await fetchQuestions(qCount, 'easy', user.id);
+                                    setQuestions(prev => [...prev, ...r2]);
+                                    
+                                    if (gameMaxRounds >= 3) {
+                                        const r3 = await fetchQuestions(qCount, 'medium', user.id);
+                                        setQuestions(prev => [...prev, ...r3]);
+                                    }
+                                } catch (bgError) {
+                                    console.error("Background question fetch failed:", bgError);
+                                }
+                            })();
+                        }
                     }
 
                 } else {
@@ -127,7 +159,7 @@ const GamePlayView = () => {
             }
         };
         getData();
-    }, [isRanked, isDeathmatch]);
+    }, [roomId, isRanked, isDeathmatch]);
 
     const handleAnswerSelect = useCallback((index: number) => {
         if (isConfirmed || showTransition || isGameOver || !question) return;
@@ -163,7 +195,7 @@ const GamePlayView = () => {
             setTimeout(() => {
                 setShowTransition(false);
 
-                if (questionNumberInRound === 10) {
+                if (isEndOfRound) {
                     // Use ref values for final comparison to ensure we have the most recent data
                     const finalUserRoundPoints = pointsRef.current.user;
                     const finalOpponentRoundPoints = pointsRef.current.opponent;
@@ -183,11 +215,7 @@ const GamePlayView = () => {
                     setShowSetResults(true);
 
                     // Check for Victory Condition
-                    // Bo3: First to 2
-                    // Bo5 (Ranked): First to 3
-                    const winsNeeded = isRanked ? 3 : 2;
                     const hasWinner = newSetScores.user >= winsNeeded || newSetScores.opponent >= winsNeeded;
-                    const maxRounds = isRanked ? 5 : 3;
 
                     setTimeout(() => {
                         setShowSetResults(false);
@@ -224,7 +252,7 @@ const GamePlayView = () => {
                 }
             }, 4000);
         }, 2000);
-    }, [isConfirmed, showTransition, isGameOver, question, currentQuestionIndex, currentRound, questionNumberInRound, questions.length, setScores, isRanked, QUESTION_TIME]);
+    }, [isConfirmed, showTransition, isGameOver, question, currentQuestionIndex, currentRound, questions.length, setScores, QUESTION_TIME, isEndOfRound, maxRounds, winsNeeded]);
 
     useEffect(() => {
         let timer: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>;
@@ -315,7 +343,7 @@ const GamePlayView = () => {
                 {/* Center: Timer & Round */}
                 <div className="flex items-center gap-8">
                     <div className="flex flex-col items-center">
-                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-1">Round {currentRound} - Câu {questionNumberInRound}/10</div>
+                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-1">Round {currentRound} - Câu {questionNumberInRound}/{questionsPerRound}</div>
                          <div className="text-2xl font-black italic text-white/10 tracking-tighter">VS</div>
                     </div>
 
@@ -604,7 +632,7 @@ const GamePlayView = () => {
 
                         {/* Center Spacer for Continue Button */}
                         <div className="flex flex-col items-center justify-center min-w-[100px] md:min-w-[200px]">
-                            {isEndOfRound && currentRound < 3 && (
+                            {isEndOfRound && currentRound < maxRounds && (
                                 <div className="px-8 py-3 rounded-full bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm font-black tracking-widest uppercase animate-bounce shadow-[0_0_30px_rgba(59,130,246,0.2)]">
                                     Tiếp tục Round {currentRound + 1}
                                 </div>

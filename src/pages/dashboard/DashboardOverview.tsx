@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Swords, TrendingUp, Clock, Users } from 'lucide-react';
+import { Trophy, Swords, TrendingUp, Clock, Users, Bookmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
 
@@ -61,7 +61,7 @@ const DashboardOverview = () => {
           {/* Leaderboard Widget */}
           <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Trophy className="text-yellow-500 w-5 h-5" /> 
+              <Bookmark className="text-yellow-500 w-5 h-5" /> 
               Bảng vàng Top 5
             </h3>
             <div className="space-y-4">
@@ -71,9 +71,10 @@ const DashboardOverview = () => {
               <LeaderboardRow rank={4} name="ShadowHunter" level={59} score="2,450" />
               <LeaderboardRow rank={5} name="IronViking" level={55} score="2,310" />
             </div>
+            <Link to="/dashboard/ranking">
             <button className="w-full mt-4 py-2 text-sm text-gray-400 border border-white/10 rounded hover:bg-white/5 hover:text-white transition-colors">
               Xem bảng xếp hạng đầy đủ
-            </button>
+            </button></Link>
           </div>
 
           {/* Clan/Friends Active */}

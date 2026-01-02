@@ -109,8 +109,8 @@ const MillionArena = () => {
               <div className="w-12 h-12 bg-fuchsia-500/20 rounded-lg flex items-center justify-center mb-6 text-fuchsia-400 group-hover:scale-110 transition-transform">
                 <Swords />
               </div>
-              <h3 className="text-xl font-bold mb-3">1v1 Deathmatch</h3>
-              <p className="text-gray-400">Đối đầu trực diện. Kỹ năng cá nhân là tất cả. Người thắng lấy tất cả.</p>
+              <h3 className="text-xl font-bold mb-3">Leo hạng BO5</h3>
+              <p className="text-gray-400">Sử dụng tư duy chiến lược để giành chiến thắng.</p>
             </div>
 
             {/* Feature 2 */}
@@ -121,8 +121,8 @@ const MillionArena = () => {
               <div className="w-12 h-12 bg-cyan-500/20 rounded-lg flex items-center justify-center mb-6 text-cyan-400 group-hover:scale-110 transition-transform">
                 <Target />
               </div>
-              <h3 className="text-xl font-bold mb-3">Team Battle 5v5</h3>
-              <p className="text-gray-400">Phối hợp chiến thuật cùng đồng đội. Đánh chiếm cứ điểm và leo hạng Clan.</p>
+              <h3 className="text-xl font-bold mb-3">Chế độ Clan</h3>
+              <p className="text-gray-400">Phối hợp chiến thuật cùng đồng đội, leo hạng Clan.</p>
             </div>
 
             {/* Feature 3 */}
@@ -134,7 +134,7 @@ const MillionArena = () => {
                 <Trophy />
               </div>
               <h3 className="text-xl font-bold mb-3">Giải đấu Million</h3>
-              <p className="text-gray-400">Sự kiện hàng tháng với tổng giải thưởng lên tới 1 triệu đô la.</p>
+              <p className="text-gray-400">Sự kiện hàng tháng với giải thưởng hấp dẫn.</p>
             </div>
           </div>
         </div>
@@ -147,10 +147,11 @@ const MillionArena = () => {
             <div className="col-span-1 md:col-span-1">
                <div className="flex items-center gap-2 mb-4">
                 <Swords className="w-6 h-6 text-fuchsia-500" />
-                <span className="text-xl font-bold text-white">MillionArena</span>
+                <span className="text-xl font-bold text-white"><span className="text-white">MillionMind</span>
+              <span className="text-purple-500">Arena</span></span>
               </div>
               <p className="text-gray-500 text-sm">
-                Nền tảng thi đấu e-sports thế hệ mới. Nơi vinh quang dành cho người xứng đáng.
+                Nền tảng thi đấu câu hỏi thế hệ mới. Nơi vinh quang dành cho người xứng đáng.
               </p>
             </div>
             
@@ -184,7 +185,7 @@ const MillionArena = () => {
           </div>
           
           <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-gray-600">
-            <p>&copy; 2024 MillionMindArena Inc. All rights reserved.</p>
+            <p>&copy; 2025 MillionMindArena Inc. All rights reserved.</p>
             <div className="flex gap-4 mt-4 md:mt-0">
               <a href="#" className="hover:text-white">Privacy Policy</a>
               <a href="#" className="hover:text-white">Terms of Service</a>

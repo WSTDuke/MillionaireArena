@@ -441,5 +441,58 @@ export const ClanPageSkeleton = () => (
   </div>
 );
 
-export default { ProfilePageSkeleton, SettingsPageSkeleton, ProfileSettingsSkeleton, OverviewPageSkeleton, ArenaPageSkeleton, TournamentsPageSkeleton, ClanPageSkeleton };
+
+// Ranking View Skeleton
+export const RankingPageSkeleton = () => (
+  <div className="animate-fade-in-up space-y-8 pb-10">
+    {/* Header Skeleton */}
+    <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+      <div className="space-y-2">
+        <SkeletonBox className="h-8 w-64" />
+        <SkeletonBox className="h-4 w-96 max-w-full" />
+      </div>
+      <SkeletonBox className="h-10 w-full md:w-64 rounded-xl" />
+    </div>
+
+    {/* Podium Skeleton */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end justify-center py-10 px-4 md:px-20 relative">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className={`flex flex-col items-center ${i === 2 ? "-mt-10 order-2" : i === 1 ? "order-1" : "order-3"}`}>
+          <SkeletonBox className={`rounded-full mb-4 ${i === 2 ? "w-28 h-28" : "w-24 h-24"}`} />
+          <SkeletonBox className="h-6 w-32 mb-2" />
+          <SkeletonBox className="h-4 w-20 mb-4" />
+          <SkeletonBox className={`w-full rounded-t-lg ${i === 2 ? "h-40" : i === 1 ? "h-28" : "h-20"}`} />
+        </div>
+      ))}
+    </div>
+
+    {/* Leaderboard List Skeleton */}
+    <div className="bg-neutral-900/50 border border-white/5 rounded-2xl overflow-hidden">
+      <div className="border-b border-white/5 bg-white/5 p-4 flex justify-between">
+        {[1, 2, 3, 4, 5].map((i) => (
+            <SkeletonBox key={i} className="h-4 w-20" />
+        ))}
+      </div>
+      <div className="divide-y divide-white/5">
+        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <div key={i} className="p-4 flex items-center gap-4">
+            <SkeletonBox className="w-8 h-8 rounded-full" />
+            <div className="flex items-center gap-3 flex-1">
+              <SkeletonBox className="w-10 h-10 rounded-full" />
+              <div className="space-y-1">
+                <SkeletonBox className="h-4 w-32" />
+                <SkeletonBox className="h-3 w-20" />
+              </div>
+            </div>
+            <SkeletonBox className="h-4 w-16" />
+            <SkeletonBox className="h-6 w-20 rounded hidden md:block" />
+            <SkeletonBox className="h-4 w-24 hidden sm:block" />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+export default { ProfilePageSkeleton, SettingsPageSkeleton, ProfileSettingsSkeleton, OverviewPageSkeleton, ArenaPageSkeleton, TournamentsPageSkeleton, ClanPageSkeleton, RankingPageSkeleton };
 
