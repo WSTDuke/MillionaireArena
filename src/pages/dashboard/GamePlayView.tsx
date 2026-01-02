@@ -3,13 +3,28 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { fetchQuestions } from '../../lib/trivia';
 import type { ProcessedQuestion } from '../../lib/trivia';
 
+import { leaveRoom as leaveRoomUtil } from '../../lib/roomManager';
+
 interface Profile {
     display_name: string;
     avatar_url: string;
+    level?: number;
+    rank_name?: string;
+}
+
+interface Participant {
+    id: string;
+    display_name: string;
+    avatar_url: string;
+    is_ready: boolean;
+    is_host: boolean;
+    level?: number;
+    rank?: string;
 }
 
 const GamePlayView = () => {
@@ -21,6 +36,7 @@ const GamePlayView = () => {
     const QUESTION_TIME = isDeathmatch ? 10 : 15;
 
     const [profile, setProfile] = useState<Profile | null>(null);
+    const [userId, setUserId] = useState<string | null>(null);
     const [timeLeft, setTimeLeft] = useState(QUESTION_TIME);
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const [isConfirmed, setIsConfirmed] = useState(false);
@@ -47,16 +63,38 @@ const GamePlayView = () => {
     const [showRoundIntro, setShowRoundIntro] = useState(false);
     const [showSetResults, setShowSetResults] = useState(false);
     const [isMatchEnding, setIsMatchEnding] = useState(false);
+    const [isNavigatingAway, setIsNavigatingAway] = useState(false);
+    const mountTimeRef = useRef(0);
+    const channelRef = useRef<RealtimeChannel | null>(null);
 
     // Refs for real-time score tracking in timeouts
     const pointsRef = useRef({ user: 10, opponent: 10 });
+    const leaveRoomRef = useRef<(() => Promise<void>) | null>(null);
+    const processedQuestionRef = useRef<number>(-1);
+    const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const bufferedOpponentAnswers = useRef<Map<number, { isCorrect: boolean; points: number }>>(new Map());
+    const currIndexRef = useRef<number>(0);
+    const isConfirmedRef = useRef<boolean>(false);
 
     const roomId = searchParams.get('roomId');
-    const [roomSettings, setRoomSettings] = useState<any>(null);
+    const [roomSettings, setRoomSettings] = useState<{ questions_per_round?: number; format?: string; max_rounds?: number } | null>(null);
+    const [opponent, setOpponent] = useState<Participant | null>(null);
+    const [opponentAnswered, setOpponentAnswered] = useState<{ isCorrect: boolean, points: number } | null>(null);
 
     const questionsPerRound = roomSettings?.questions_per_round || 10;
     const matchFormat = roomSettings?.format || (isRanked ? 'Bo5' : 'Bo3');
-    const maxRounds = matchFormat === 'Bo5' ? 5 : (matchFormat === 'Bo3' ? 3 : 1);
+    
+    // Dynamic BoX Parsing
+    const getRoundsFromFormat = (f: string) => {
+        if (f.startsWith('Bo')) {
+            return parseInt(f.substring(2)) || 1;
+        }
+        // The original logic for Bo5/Bo3 was redundant as parseInt handles it.
+        // This simplified version correctly handles any BoX format.
+        return 1; // Default if not BoX
+    };
+    
+    const maxRounds = getRoundsFromFormat(matchFormat);
     const winsNeeded = Math.ceil(maxRounds / 2);
 
     const currentRound = Math.floor(currentQuestionIndex / questionsPerRound) + 1;
@@ -73,79 +111,44 @@ const GamePlayView = () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
+                    setUserId(user.id);
                     const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
                     setProfile(profileData);
 
-                    let qCount = 10;
-                    let format = isRanked ? 'Bo5' : 'Bo3';
 
                     // Fetch Room data if exists
                     if (roomId) {
                         const { data: roomData, error: roomError } = await supabase
                             .from('rooms')
-                            .select('settings')
+                            .select('*')
                             .eq('id', roomId)
                             .single();
                         
-                        if (roomData?.settings) {
-                            setRoomSettings(roomData.settings);
-                            qCount = roomData.settings.questions_per_round || 10;
-                            format = roomData.settings.format || format;
+                        if (roomData) {
+                            if (roomData.settings) {
+                                setRoomSettings(roomData.settings);
+                            }
+                            
+                            // SYNC QUESTIONS FROM DATABASE
+                            if (roomData.questions && Array.isArray(roomData.questions)) {
+                                console.log("Using synchronized questions from DB:", roomData.questions.length);
+                                setQuestions(roomData.questions);
+                                setIsLoadingQuestions(false);
+                            } else {
+                                console.warn("No questions found in room data, guest might be waiting for host...");
+                                // If guest enters before host finishes fetching, wait for DB update
+                            }
+                            
+                            // Get Opponent info
+                            const opp = roomData.participants?.find((p: Participant) => p.id !== user.id);
+                            if (opp) setOpponent(opp);
                         }
                         if (roomError) console.error("Error fetching room settings:", roomError);
-                    }
-
-                    const gameMaxRounds = format === 'Bo5' ? 5 : (format === 'Bo3' ? 3 : 1);
-
-                    // Start fetching based on Mode logic
-                    if (isRanked || format === 'Bo5') {
-                        // Bo5 (5 Rounds)
-                        const r1 = await fetchQuestions(qCount, 'easy', user.id);
+                    } else if (!isRanked && !isDeathmatch) {
+                        // For solo testing / old matchmaking fallback if no roomId
+                        const r1 = await fetchQuestions(10, 'easy', user.id);
                         setQuestions(r1);
                         setIsLoadingQuestions(false);
-
-                        (async () => {
-                            try {
-                                const r2 = await fetchQuestions(qCount, 'easy', user.id);
-                                setQuestions(prev => [...prev, ...r2]);
-                                
-                                const r3 = await fetchQuestions(qCount, 'medium', user.id);
-                                setQuestions(prev => [...prev, ...r3]);
-
-                                if (gameMaxRounds >= 4) {
-                                    const r4 = await fetchQuestions(qCount, 'medium', user.id);
-                                    setQuestions(prev => [...prev, ...r4]);
-                                }
-
-                                if (gameMaxRounds >= 5) {
-                                    const r5 = await fetchQuestions(qCount, 'hard', user.id);
-                                    setQuestions(prev => [...prev, ...r5]);
-                                }
-                            } catch (bgError) {
-                                console.error("Background question fetch failed:", bgError);
-                            }
-                        })();
-                    } else {
-                        // Bo3 or Bo1
-                        const r1 = await fetchQuestions(qCount, 'easy', user.id);
-                        setQuestions(r1);
-                        setIsLoadingQuestions(false);
-
-                        if (gameMaxRounds > 1) {
-                            (async () => {
-                                try {
-                                    const r2 = await fetchQuestions(qCount, 'easy', user.id);
-                                    setQuestions(prev => [...prev, ...r2]);
-                                    
-                                    if (gameMaxRounds >= 3) {
-                                        const r3 = await fetchQuestions(qCount, 'medium', user.id);
-                                        setQuestions(prev => [...prev, ...r3]);
-                                    }
-                                } catch (bgError) {
-                                    console.error("Background question fetch failed:", bgError);
-                                }
-                            })();
-                        }
                     }
 
                 } else {
@@ -161,98 +164,274 @@ const GamePlayView = () => {
         getData();
     }, [roomId, isRanked, isDeathmatch]);
 
+    const leaveRoom = useCallback(async () => {
+        if (!roomId) return;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            await leaveRoomUtil(roomId, user.id);
+        }
+    }, [roomId]);
+
+    useEffect(() => {
+        leaveRoomRef.current = leaveRoom;
+    }, [leaveRoom]);
+
+    // Keep refs in sync with state
+    useEffect(() => {
+        currIndexRef.current = currentQuestionIndex;
+        isConfirmedRef.current = isConfirmed;
+        
+        // Broadcast a "heartbeat" to let opponent know we are on this question
+        if (channelRef.current && channelRef.current.state === 'joined') {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'q_sync',
+                payload: { userId, qIndex: currentQuestionIndex }
+            });
+        }
+    }, [currentQuestionIndex, userId, isConfirmed]);
+
+    // --- REALTIME ANSWER SYNC ---
+    useEffect(() => {
+        if (!roomId) return;
+
+        let channel: RealtimeChannel | null = null;
+
+        const initializeChannel = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+
+            const channelId = `game_${roomId}`;
+            channel = supabase.channel(channelId, {
+                config: {
+                    broadcast: { self: false }
+                }
+            });
+            channelRef.current = channel;
+
+            channel
+                .on('broadcast', { event: 'player_answer' }, ({ payload }: { payload: { userId: string; qIndex: number; isCorrect: boolean; points: number } }) => {
+                    const { userId: senderId, qIndex, isCorrect, points } = payload;
+                    
+                    if (senderId !== user.id) {
+                        console.log(`Realtime: Received answer for Q${qIndex} from opponent`);
+                        bufferedOpponentAnswers.current.set(qIndex, { isCorrect, points });
+                        
+                        if (qIndex === currIndexRef.current) {
+                            setOpponentAnswered({ isCorrect, points });
+                            setOpponentScore(prev => prev + points);
+                            pointsRef.current.opponent += points;
+                            setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + points }));
+                            setRoundPoints(prev => ({ ...prev, opponent: points }));
+                        }
+                    }
+                })
+                .on('broadcast', { event: 'q_sync' }, ({ payload }: { payload: { userId: string; qIndex: number } }) => {
+                    const { userId: senderId, qIndex } = payload;
+                    if (senderId !== user.id) {
+                        console.log(`Realtime: Opponent is at Q${qIndex}`);
+                        
+                        // CATCH-UP LOGIC: If opponent is ahead and we have already answered,
+                        // it means we missed their answer broadcast. Treat it as received.
+                        if (qIndex > currIndexRef.current && isConfirmedRef.current) {
+                            console.warn("Sync: Opponent is ahead. Forcing catch-up.");
+                            const buff = bufferedOpponentAnswers.current.get(currIndexRef.current);
+                            if (buff) {
+                                setOpponentAnswered(buff);
+                            } else {
+                                // If no buffer, just show as answered to unblock transition
+                                setOpponentAnswered({ isCorrect: false, points: 0 });
+                            }
+                        }
+                    }
+                })
+                .subscribe((status: string) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log("Realtime: WebSocket connected for room", roomId);
+                    } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                        console.warn(`Realtime: Subscription ${status}. Attempting reconnect...`);
+                        setTimeout(initializeChannel, 3000);
+                    }
+                });
+        };
+
+        initializeChannel();
+
+        return () => {
+            if (channel) {
+                supabase.removeChannel(channel);
+                channelRef.current = null;
+            }
+        };
+    }, [roomId]);
+
+    useEffect(() => {
+        mountTimeRef.current = Date.now();
+        const handleBeforeUnload = () => {
+            if (!isNavigatingAway && leaveRoomRef.current) {
+                leaveRoomRef.current();
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        const mountTimeAtStart = mountTimeRef.current;
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            
+            const duration = Date.now() - mountTimeAtStart;
+            if (duration < 2000) return;
+
+            if (!isNavigatingAway && leaveRoomRef.current) {
+                leaveRoomRef.current();
+            }
+        };
+    }, [isNavigatingAway]);
+
     const handleAnswerSelect = useCallback((index: number) => {
-        if (isConfirmed || showTransition || isGameOver || !question) return;
+        if (isConfirmed || showTransition || isGameOver || !questions[currentQuestionIndex]) return;
 
         setIsConfirmed(true);
         setSelectedAnswer(index);
 
-        // Calculate Scores
-        const uPoints = index === question.correctAnswer ? 1 : -1;
-        // Mock opponent: 70% chance correct
-        const oIsCorrect = Math.random() < 0.7;
-        const oPoints = oIsCorrect ? 1 : -1;
+        const currentQ = questions[currentQuestionIndex];
+        const uPoints = index === currentQ.correctAnswer ? 1 : (index === -1 ? 0 : -1);
 
-        setRoundPoints({ user: uPoints, opponent: oPoints });
-
-        // Update total scores and CURRENT ROUND points
-        setTimeout(() => {
-            setUserScore(prev => prev + uPoints);
-            pointsRef.current.user += uPoints;
-            setRoundPointsHistory(prev => ({ ...prev, user: prev.user + uPoints }));
-            setShowTransition(true);
-
-            // Decouple opponent score update with random delay
-            const opponentDelay = 800 + Math.random() * 1000;
-            setTimeout(() => {
-                setOpponentScore(prev => prev + oPoints);
-                pointsRef.current.opponent += oPoints;
-                setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + oPoints }));
-                setRoundPoints(prev => ({ ...prev, opponent: oPoints }));
-            }, opponentDelay);
-
-            // Hide transition and move next after 4 seconds
-            setTimeout(() => {
-                setShowTransition(false);
-
-                if (isEndOfRound) {
-                    // Use ref values for final comparison to ensure we have the most recent data
-                    const finalUserRoundPoints = pointsRef.current.user;
-                    const finalOpponentRoundPoints = pointsRef.current.opponent;
-                    const userWonSet = finalUserRoundPoints > finalOpponentRoundPoints;
-                    const isRoundDraw = finalUserRoundPoints === finalOpponentRoundPoints;
-                    
-                    let newSetScores = { ...setScores };
-
-                    if (!isRoundDraw) {
-                        newSetScores = {
-                            user: userWonSet ? setScores.user + 1 : setScores.user,
-                            opponent: userWonSet ? setScores.opponent : setScores.opponent + 1
-                        };
-                        setSetScores(newSetScores);
+        // Broadcast answer via persistent channel
+        if (channelRef.current) {
+            // Check if status is joined/subscribed to avoid REST fallback
+            const status = channelRef.current.state;
+            if (status === 'joined') {
+                channelRef.current.send({
+                    type: 'broadcast',
+                    event: 'player_answer',
+                    payload: {
+                        userId: userId,
+                        qIndex: currentQuestionIndex,
+                        isCorrect: index === currentQ.correctAnswer,
+                        points: uPoints
                     }
+                });
+            } else {
+                console.warn("Realtime: Channel not fully joined yet (status: " + status + "). Attempting send anyway...");
+                channelRef.current.send({
+                    type: 'broadcast',
+                    event: 'player_answer',
+                    payload: {
+                        userId: userId,
+                        qIndex: currentQuestionIndex,
+                        isCorrect: index === currentQ.correctAnswer,
+                        points: uPoints
+                    }
+                });
+            }
+        }
+
+        setRoundPoints((prev: { user: number; opponent: number }) => ({ ...prev, user: uPoints }));
+    }, [isConfirmed, showTransition, isGameOver, questions, currentQuestionIndex, userId]);
+
+    // --- SYNCHRONIZED TRANSITION LOGIC ---
+    useEffect(() => {
+        // Check if we have a buffered answer for the current question index
+        const bufferedAnswer = bufferedOpponentAnswers.current.get(currentQuestionIndex);
+        if (bufferedAnswer && opponentAnswered === null) {
+            console.log(`Sync: Applying buffered answer for Q${currentQuestionIndex}`);
+            setOpponentAnswered(bufferedAnswer);
+            setOpponentScore(prev => prev + bufferedAnswer.points);
+            pointsRef.current.opponent += bufferedAnswer.points;
+            setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + bufferedAnswer.points }));
+            setRoundPoints(prev => ({ ...prev, opponent: bufferedAnswer.points }));
+        }
+
+        // Condition: Both have answered OR (I have answered and timer is 0)
+        const bothReady = isConfirmed && (opponentAnswered !== null || timeLeft === 0);
+        
+        if (bothReady && !showTransition && !showSetResults && !isGameOver && !isLoadingQuestions && questions.length > 0 && processedQuestionRef.current !== currentQuestionIndex) {
+            
+            // Start the timer ONLY if it hasn't started yet for THIS question
+            if (!transitionTimerRef.current) {
+                console.log("Both players ready. Starting transition timer for index:", currentQuestionIndex);
+                
+                transitionTimerRef.current = setTimeout(() => {
+                    // Critical: Mark as processed INSIDE the timer
+                    processedQuestionRef.current = currentQuestionIndex;
                     
-                    setShowSetResults(true);
+                    // Final update of local scores before showing transition
+                    const uPoints = selectedAnswer === questions[currentQuestionIndex].correctAnswer ? 1 : (selectedAnswer === -1 ? 0 : -1);
+                    
+                    setUserScore(prev => prev + uPoints);
+                    pointsRef.current.user += uPoints;
+                    setRoundPointsHistory(prev => ({ ...prev, user: prev.user + uPoints }));
+                    
+                    setShowTransition(true);
 
-                    // Check for Victory Condition
-                    const hasWinner = newSetScores.user >= winsNeeded || newSetScores.opponent >= winsNeeded;
-
+                    // Hide transition and move next after 4 seconds
                     setTimeout(() => {
-                        setShowSetResults(false);
-                        pointsRef.current = { user: 10, opponent: 10 };
-                        setRoundPointsHistory({ user: 10, opponent: 10 });
-                        setUserScore(10);
-                        setOpponentScore(10);
+                        setShowTransition(false);
 
-                        // If not declared winner yet AND we have rounds left
-                        if (!hasWinner && currentRound < maxRounds) {
+                        if (isEndOfRound) {
+                            const finalUserRoundPoints = pointsRef.current.user;
+                            const finalOpponentRoundPoints = pointsRef.current.opponent;
+                            const userWonSet = finalUserRoundPoints > finalOpponentRoundPoints;
+                            const isRoundDraw = finalUserRoundPoints === finalOpponentRoundPoints;
+                            
+                            let newSetScores = { ...setScores };
+
+                            if (!isRoundDraw) {
+                                newSetScores = {
+                                    user: userWonSet ? setScores.user + 1 : setScores.user,
+                                    opponent: userWonSet ? setScores.opponent : setScores.opponent + 1
+                                };
+                                setSetScores(newSetScores);
+                            }
+                            
+                            setShowSetResults(true);
+                            const hasWinner = newSetScores.user >= winsNeeded || newSetScores.opponent >= winsNeeded;
+
+                            setTimeout(() => {
+                                setShowSetResults(false);
+                                pointsRef.current = { user: 10, opponent: 10 };
+                                setRoundPointsHistory({ user: 10, opponent: 10 });
+                                setUserScore(10);
+                                setOpponentScore(10);
+
+                                if (!hasWinner && currentRound < maxRounds) {
+                                    setCurrentQuestionIndex(prev => prev + 1);
+                                    setOpponentAnswered(null);
+                                    setShowRoundIntro(true);
+                                    setTimeout(() => setShowRoundIntro(false), 2000);
+                                    setTimeLeft(QUESTION_TIME);
+                                    setIsConfirmed(false);
+                                    setSelectedAnswer(null);
+                                } else {
+                                    setIsMatchEnding(true);
+                                    setTimeout(() => {
+                                        setIsGameOver(true);
+                                        setIsMatchEnding(false);
+                                    }, 2000);
+                                }
+                            }, 4000);
+                        } else {
+                            // Standard Next Question
                             setCurrentQuestionIndex(prev => prev + 1);
-                            setShowRoundIntro(true);
-                            setTimeout(() => setShowRoundIntro(false), 2000);
+                            setOpponentAnswered(null);
                             setTimeLeft(QUESTION_TIME);
                             setIsConfirmed(false);
                             setSelectedAnswer(null);
-                        } else {
-                            setIsMatchEnding(true);
-                            setTimeout(() => {
-                                setIsMatchEnding(false);
-                                setIsGameOver(true);
-                            }, 2500);
                         }
+                        
+                        // Reset timer ref so next question can start its own timer
+                        transitionTimerRef.current = null;
                     }, 4000);
-                } else {
-                    if (currentQuestionIndex < questions.length - 1) {
-                        setCurrentQuestionIndex(prev => prev + 1);
-                        setTimeLeft(QUESTION_TIME);
-                        setIsConfirmed(false);
-                        setSelectedAnswer(null);
-                    } else {
-                        setIsGameOver(true);
-                    }
-                }
-            }, 4000);
-        }, 2000);
-    }, [isConfirmed, showTransition, isGameOver, question, currentQuestionIndex, currentRound, questions.length, setScores, QUESTION_TIME, isEndOfRound, maxRounds, winsNeeded]);
+                }, 1000);
+            }
+        }
+
+        return () => {
+             // Logic intentionally kept outside status effects to prevent interruption
+        };
+    }, [isConfirmed, opponentAnswered, timeLeft, showTransition, isGameOver, isLoadingQuestions, questions, currentQuestionIndex, isEndOfRound, setScores, winsNeeded, currentRound, maxRounds, QUESTION_TIME, selectedAnswer, showSetResults]);
 
     useEffect(() => {
         let timer: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>;
@@ -281,18 +460,30 @@ const GamePlayView = () => {
     }, [gameStage, isLoadingQuestions]);
 
     useEffect(() => {
-        if (timeLeft > 0 && !isConfirmed && gameStage === 'playing' && !showTransition && !isGameOver) {
+        // TIMER DECOUPLING: Timer keeps ticking even after confirmation
+        // This ensures the round ALWAYS ends when time is up, regardless of sync status.
+        if (timeLeft > 0 && gameStage === 'playing' && !showTransition && !isGameOver) {
             const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
             return () => clearInterval(timer);
-        } else if (timeLeft === 0 && !isConfirmed && gameStage === 'playing' && !showTransition && !isGameOver) {
-            // Timeout logic - using setTimeout to avoid synchronous setState inside effect
-            setTimeout(() => {
-                if (!isConfirmed && !showTransition) {
-                    handleAnswerSelect(-1);
-                }
-            }, 0);
+        } else if (timeLeft === 0 && gameStage === 'playing' && !showTransition && !isGameOver) {
+            // Timeout reached
+            if (!isConfirmed) {
+                // Defer to avoid cascading render lint error
+                const timeoutId = setTimeout(() => {
+                     handleAnswerSelect(-1);
+                }, 0);
+                return () => clearTimeout(timeoutId);
+            }
         }
-    }, [timeLeft, isConfirmed, gameStage, showTransition, isGameOver, handleAnswerSelect]);
+    }, [timeLeft, gameStage, showTransition, isGameOver, isConfirmed, handleAnswerSelect]);
+
+    // Cleanup buffered answers on unmount
+    useEffect(() => {
+        const answersRef = bufferedOpponentAnswers.current;
+        return () => {
+            answersRef.clear();
+        };
+    }, []);
 
 
     if (fetchError || (!isLoadingQuestions && questions.length === 0)) {
@@ -314,7 +505,7 @@ const GamePlayView = () => {
     }
 
     return (
-        <div className="h-screen bg-neutral-950 text-white p-4 md:p-8 flex flex-col animate-fade-in relative overflow-hidden">
+        <div className="min-h-screen bg-neutral-950 text-white p-4 md:p-8 flex flex-col animate-fade-in relative overflow-y-auto">
             {/* Background Glows */}
             <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 blur-[120px] pointer-events-none"></div>
             <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-fuchsia-600/10 blur-[120px] pointer-events-none"></div>
@@ -332,10 +523,21 @@ const GamePlayView = () => {
                         </div>
                     </div>
                     <div>
-                        <div className="font-bold text-sm tracking-wide">{profile?.display_name || "You"}</div>
-                        <div className="flex items-center gap-2">
-                             <Trophy className="text-blue-400" size={12} />
-                             <span className="text-xs font-black text-white">{setScores.user} ( hiệp ) / {userScore} ( điểm )</span>
+                        <div className="font-bold text-sm tracking-wide mb-1">{profile?.display_name || "BẠN"}</div>
+                        <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                                <Trophy className="text-blue-400" size={12} />
+                                <span className="text-xs font-black text-white">{setScores.user} ( hiệp ) / {userScore} ( điểm )</span>
+                            </div>
+                            {/* Round Victory Bars (Me) */}
+                            <div className="flex gap-1">
+                                {Array.from({ length: winsNeeded }).map((_, i) => (
+                                    <div 
+                                        key={i} 
+                                        className={`h-1.5 w-6 rounded-full transition-all duration-500 skew-x-[-20deg] ${i < setScores.user ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-white/10'}`}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -363,10 +565,12 @@ const GamePlayView = () => {
                             </div>
                         </div>
                         
-                        {isConfirmed && (
+                        {(isConfirmed || opponentAnswered) && (
                              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-2 bg-neutral-900 border border-white/5 px-3 py-1 rounded-full animate-bounce">
                                  <Loader2 size={10} className="animate-spin text-blue-500" />
-                                 <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">Waiting for Opponent</span>
+                                 <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
+                                     {isConfirmed && opponentAnswered ? 'Both Answered!' : isConfirmed ? 'Waiting for Opponent' : 'Opponent Answered!'}
+                                 </span>
                              </div>
                         )}
                     </div>
@@ -390,15 +594,32 @@ const GamePlayView = () => {
                 {/* Opponent */}
                 <div className="flex items-center gap-4 text-right">
                     <div>
-                        <div className="font-bold text-sm tracking-wide text-gray-400">CyberHunter_X</div>
-                        <div className="flex items-center justify-end gap-2">
-                             <span className="text-xs font-black text-gray-400">{opponentScore} ( điểm ) / {setScores.opponent} ( hiệp )</span>
-                             <Zap className="text-red-400" size={12} />
+                        <div className="font-bold text-sm tracking-wide mb-1 text-gray-400">
+                            {opponent?.display_name || "ĐỐI THỦ"}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center justify-end gap-2 text-right">
+                                <Zap className="text-red-400" size={12} />
+                                <span className="text-xs font-black text-white">{setScores.opponent} ( hiệp ) / {opponentScore} ( điểm )</span>
+                            </div>
+                            {/* Round Victory Bars (Opponent) */}
+                            <div className="flex gap-1">
+                                {Array.from({ length: winsNeeded }).map((_, i) => (
+                                    <div 
+                                        key={i} 
+                                        className={`h-1.5 w-6 rounded-full transition-all duration-500 skew-x-[-20deg] ${i < setScores.opponent ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-white/10'}`}
+                                    />
+                                ))}
+                            </div>
                         </div>
                     </div>
                     <div className="relative">
                         <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-red-500 to-orange-600 p-[2px] shadow-lg shadow-red-500/20 opacity-80">
-                            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-full object-cover border-4 border-black" alt="Opponent" />
+                            <img 
+                                src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} 
+                                className="w-full h-full rounded-full object-cover border-4 border-black" 
+                                alt="Opponent" 
+                            />
                         </div>
                         <div className="absolute -bottom-1 -left-1 w-5 h-5 rounded-full bg-red-500 border-2 border-black flex items-center justify-center">
                             <Zap size={8} className="text-white" />
@@ -408,16 +629,16 @@ const GamePlayView = () => {
             </div>
 
             {/* Main Quiz Area */}
-            <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-center gap-12 relative z-10 pb-12">
+            <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-center gap-6 md:gap-10 relative z-10 pb-12">
                 
                 {/* Question Card */}
                 <div className="relative group">
                     <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-[40px] blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <div className="bg-neutral-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-10 md:p-16 text-center shadow-2xl relative">
+                    <div className="bg-neutral-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-6 md:p-12 text-center shadow-2xl relative">
                         <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">
                             Question 0{currentQuestionIndex + 1}
                         </div>
-                        <h2 className="text-2xl md:text-4xl font-bold leading-tight text-white mb-2">
+                        <h2 className="text-xl md:text-3xl font-bold leading-tight text-white mb-2">
                             {question?.text || "..."}
                         </h2>
                     </div>
@@ -425,14 +646,14 @@ const GamePlayView = () => {
 
                 {/* Answers Grid */}
                 {gameStage === 'playing' && question ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-10 duration-700">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 animate-in slide-in-from-bottom-10 duration-700">
                         {question.options.map((option: string, index: number) => (
                             <button
                                 key={index}
                                 onClick={() => handleAnswerSelect(index)}
                                 disabled={isConfirmed}
                                 className={`
-                                    group relative p-6 md:p-8 rounded-[25px] border-2 transition-all duration-300 text-left h-full
+                                    group relative p-4 md:p-6 rounded-[25px] border-2 transition-all duration-300 text-left h-full
                                     ${selectedAnswer === index 
                                         ? 'bg-blue-600/20 border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.3)]' 
                                         : 'bg-neutral-900/40 border-white/5 hover:border-white/20 hover:bg-white/5'}
@@ -504,7 +725,11 @@ const GamePlayView = () => {
                                     Tiếp tục đấu
                                 </button>
                                 <button 
-                                    onClick={() => navigate('/dashboard/arena')}
+                                    onClick={async () => {
+                                        setIsNavigatingAway(true);
+                                        await leaveRoom();
+                                        navigate('/dashboard/arena');
+                                    }}
                                     className={`px-6 py-4 rounded-2xl ${modalType === 'exit' ? 'bg-red-600 hover:bg-red-500 shadow-red-600/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'} text-white font-black uppercase tracking-wider shadow-lg transition-all active:scale-95`}
                                 >
                                     {modalType === 'exit' ? 'Thoát' : 'Đầu hàng'}
@@ -539,7 +764,7 @@ const GamePlayView = () => {
                                 <div className="absolute -bottom-4 -right-4 px-4 py-2 bg-blue-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">YOU</div>
                             </div>
                             <div className="text-center">
-                                <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "HERO"}</h2>
+                                <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "BẠN"}</h2>
                                  <div className="flex justify-center gap-2 mt-2">
                                      <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Score: {userScore}</div>
                                 </div>
@@ -565,16 +790,16 @@ const GamePlayView = () => {
                                 <div className="w-32 h-32 md:w-48 md:h-48 rounded-[40px] bg-gradient-to-tr from-red-500 to-orange-600 p-[3px] shadow-[0_0_50px_rgba(239,68,68,0.3)] -rotate-3 hover:rotate-0 transition-transform duration-500">
                                     <div className="w-full h-full rounded-[37px] bg-black p-1">
                                         <img 
-                                            src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" 
+                                            src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} 
                                             className="w-full h-full rounded-[34px] object-cover" 
-                                            alt="Opponent" 
+                                            alt={opponent?.display_name || "ĐỐI THỦ"} 
                                         />
                                     </div>
                                 </div>
                                 <div className="absolute -bottom-4 -left-4 px-4 py-2 bg-red-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">OPPONENT</div>
                             </div>
                             <div className="text-center">
-                                <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">CyberHunter_X</h2>
+                                <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{opponent?.display_name || "ĐỐI THỦ"}</h2>
                                  <div className="flex justify-center gap-2 mt-2">
                                      <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Score: {opponentScore}</div>
                                 </div>
@@ -627,7 +852,7 @@ const GamePlayView = () => {
                                      {roundPoints.user > 0 ? `+${roundPoints.user}` : roundPoints.user}
                                  </div>
                              </div>
-                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{profile?.display_name || "HERO"}</div>
+                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{profile?.display_name || "BẠN"}</div>
                         </div>
 
                         {/* Center Spacer for Continue Button */}
@@ -642,14 +867,14 @@ const GamePlayView = () => {
                         {/* Player 2 Change */}
                         <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-20 duration-700">
                              <div className="relative">
-                                 <div className={`w-36 h-36 md:w-56 md:h-56 rounded-full border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} p-1.5 bg-black`}>
-                                      <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-full object-cover" alt="Opponent" />
-                                 </div>
+                                  <div className={`w-36 h-36 md:w-56 md:h-56 rounded-full border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} p-1.5 bg-black`}>
+                                       <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full rounded-full object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
+                                  </div>
                                  <div className={`absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black ${roundPoints.opponent > 0 ? 'text-green-500' : 'text-red-500'} drop-shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-bounce`}>
                                      {roundPoints.opponent > 0 ? `+${roundPoints.opponent}` : roundPoints.opponent}
                                  </div>
                              </div>
-                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">Opponent</div>
+                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{opponent?.display_name || "ĐỐI THỦ"}</div>
                         </div>
                     </div>
                 </div>
@@ -700,7 +925,7 @@ const GamePlayView = () => {
 
                              <div className="relative z-10 flex flex-col items-center">
                                  <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
-                                     <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full object-cover" alt="Opponent" />
+                                     <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
                                  </div>
                                  <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Opponent Score</div>
                                  <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{opponentScore}</div>
@@ -712,7 +937,11 @@ const GamePlayView = () => {
                     </div>
 
                     <button 
-                        onClick={() => navigate('/dashboard/arena')}
+                        onClick={async () => {
+                            setIsNavigatingAway(true);
+                            await leaveRoom();
+                            navigate('/dashboard/arena');
+                        }}
                         className="relative px-12 py-5 rounded-[25px] bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.3)]"
                     >
                         Quay lại Arena
@@ -757,17 +986,17 @@ const GamePlayView = () => {
                                 </div>
                                 <div className="absolute -top-3 -right-3 px-3 py-1 bg-blue-600 rounded-lg text-[10px] md:text-sm font-black italic shadow-xl">+{roundPointsHistory.user}</div>
                             </div>
-                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">{profile?.display_name || "HERO"}</div>
+                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">{profile?.display_name || "BẠN"}</div>
                         </div>
 
                         <div className="flex flex-col items-center gap-4 md:gap-6">
                             <div className="relative">
                                 <div className="w-24 h-24 md:w-56 md:h-56 rounded-[30px] md:rounded-[40px] border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)] p-1 animate-in slide-in-from-right-20 duration-1000 rotate-[4deg]">
-                                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=opponent" className="w-full h-full rounded-[24px] md:rounded-[34px] object-cover" alt="Opponent" />
+                                    <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full rounded-[24px] md:rounded-[34px] object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
                                 </div>
                                 <div className="absolute -top-3 -left-3 px-3 py-1 bg-red-600 rounded-lg text-[10px] md:text-sm font-black italic shadow-xl">+{roundPointsHistory.opponent}</div>
                             </div>
-                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">CyberHunter_X</div>
+                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">{opponent?.display_name || "ĐỐI THỦ"}</div>
                         </div>
                         
                         {/* Overlay VS Text absolute centered */}

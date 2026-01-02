@@ -43,7 +43,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  */
 let isFetchingQuestions = false;
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 10000; // 10 seconds
+const MIN_REQUEST_INTERVAL = 12000; // 12 seconds
 let geminiBroken = localStorage.getItem('gemini_broken') === 'true';
 
 /**
@@ -108,17 +108,19 @@ async function translateBatchWithGemini(texts: string[]): Promise<string[]> {
     try {
         const model = genAI.getGenerativeModel({ 
             model: "gemini-1.5-flash",
-            generationConfig: {
-                responseMimeType: "application/json",
-            }
-        }, { apiVersion: "v1" });
+        }, { apiVersion: "v1beta" });
 
         // Cập nhật cách truyền prompt để đảm bảo Gemini hiểu rõ ngữ cảnh mảng
         const prompt = `${SYSTEM_PROMPT}\n\nINPUT DATA TO TRANSLATE:\n${JSON.stringify(texts)}`;
         
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
+        let text = response.text();
+        
+        // Robust check: Remove markdown backticks if Gemini includes them
+        if (text.includes("```")) {
+            text = text.replace(/```json|```/g, "").trim();
+        }
         
         const translatedArray = JSON.parse(text);
         

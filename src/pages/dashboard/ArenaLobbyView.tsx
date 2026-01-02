@@ -1,7 +1,10 @@
 import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
-import { Zap, Swords, X, Loader2, Bookmark, Copy, Check, Play, Plus } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { Zap, Swords, X, Loader2, Bookmark, Copy, Check, Play, Plus, RefreshCcw } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+
+import { leaveRoom as leaveRoomUtil } from '../../lib/roomManager';
+import { fetchQuestions } from '../../lib/trivia';
 
 interface Participant {
     id: string;
@@ -29,7 +32,10 @@ interface Room {
 const ArenaLobbyView = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const { user, profile } = useOutletContext<{ user: any; profile: any }>();
+    const { user, profile } = useOutletContext<{ 
+        user: { id: string; user_metadata: { full_name?: string; avatar_url?: string } }; 
+        profile: { display_name?: string; full_name?: string; avatar_url?: string; level?: number; rank_name?: string } 
+    }>();
     const mode = searchParams.get('mode') || 'Normal';
     const roomId = searchParams.get('roomId');
     
@@ -44,143 +50,191 @@ const ArenaLobbyView = () => {
     const [copied, setCopied] = useState(false);
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [showInviteModal, setShowInviteModal] = useState(false);
+    const [isStarting, setIsStarting] = useState(false);
+    const isNavigatingToGame = useRef(false);
+    const [isNavigatingAway, setIsNavigatingAway] = useState(false);
+    const mountTimeRef = useRef(0);
+    const hasJoined = useRef(false);
+    const leaveRoomRef = useRef<(() => Promise<void>) | null>(null);
 
     const displayName = profile?.display_name || profile?.full_name || user?.user_metadata?.full_name || "User";
     const avatarUrl = profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user?.id || 'default');
 
+    const leaveRoom = useCallback(async () => {
+        if (!roomId || !user?.id) return;
+        await leaveRoomUtil(roomId, user.id);
+    }, [roomId, user?.id]);
+
+    // Keep leaveRoom ref updated for cleanup
+    useEffect(() => {
+        leaveRoomRef.current = leaveRoom;
+    }, [leaveRoom]);
+
+    // --- LEAVE ON UNMOUNT & TAB CLOSE ---
+    useEffect(() => {
+        mountTimeRef.current = Date.now();
+        const handleBeforeUnload = () => {
+             // Tab closure: always try to leave if not going to game
+             if (!isNavigatingToGame.current && leaveRoomRef.current) {
+                leaveRoomRef.current();
+             }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        
+        // Capture mount time for cleanup protection
+        const mountTimeAtStart = mountTimeRef.current;
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            
+            // PROTECTION: Skip cleanup if component was mounted for < 2s (Strict Mode / Fast Refresh)
+            const duration = Date.now() - mountTimeAtStart;
+            if (duration < 2000) {
+                 console.log("Cleanup: Skipping room leave (Short mount time)");
+                 return;
+            }
+
+            if (!isNavigatingToGame.current && !isNavigatingAway && leaveRoomRef.current) {
+                console.log("Cleanup: Leaving room on unmount");
+                leaveRoomRef.current();
+            }
+        };
+    }, [isNavigatingAway]); 
+ // Run ONLY on true unmount of this component instance
+
     // --- CUSTOM ROOM LOGIC ---
+    
+    // --- REUSABLE FETCH LOGIC ---
+    const fetchRoomData = useCallback(async (isInitial = false) => {
+        if (!roomId || !user) return;
+
+        const { data, error } = await supabase
+            .from('rooms')
+            .select('*')
+            .eq('id', roomId)
+            .single();
+
+        if (data) {
+            setRoomData(data);
+            setIsHost(data.host_id === user.id);
+            setParticipants(data.participants || []);
+            
+            if (isInitial && !hasJoined.current) {
+                hasJoined.current = true;
+                setSearching(true); // "Waiting" state
+                
+                const myParticipantData: Participant = {
+                    id: user.id,
+                    display_name: displayName,
+                    avatar_url: avatarUrl,
+                    is_ready: false,
+                    is_host: (data.host_id === user.id),
+                    level: profile?.level || 1,
+                    rank: profile?.rank_name || 'Bronze I'
+                };
+
+                // setJoining(true); // Removed unused joining state
+                try {
+                    // ATOMIC JOIN VIA RPC
+                    const { error: rpcError } = await supabase.rpc('join_room', {
+                        p_room_id: roomId,
+                        p_participant: myParticipantData
+                    });
+                    
+                    if (rpcError) {
+                        console.error("RPC Join Error:", rpcError);
+                        alert(`Lỗi khi vào phòng: ${rpcError.message}`);
+                        navigate('/dashboard/arena');
+                        return;
+                    }
+
+                    // Refresh data after RPC to be sure
+                    const { data: freshRoom } = await supabase
+                        .from('rooms')
+                        .select('*')
+                        .eq('id', roomId)
+                        .single();
+                        
+                    if (freshRoom) {
+                        setParticipants(freshRoom.participants || []);
+                        setRoomData(freshRoom);
+                    }
+                } catch (err) {
+                    console.error("Unexpected Join Error:", err);
+                } finally {
+                    // setJoining(false); 
+                }
+            }
+
+            if (data.status === 'playing') {
+                 setMatchFound(true); 
+            }
+        } else {
+            console.error("Room not found", error);
+            if (isInitial) navigate('/dashboard/arena');
+        }
+    }, [roomId, user, displayName, avatarUrl, profile?.level, profile?.rank_name, navigate]);
+
+    // --- INITIAL FETCH ---
+    useEffect(() => {
+        fetchRoomData(true);
+    }, [fetchRoomData]);
+
+    // --- STABLE SUBSCRIPTION ---
+    useEffect(() => {
+        if (!roomId || !user?.id) return;
+
+        console.log("Subscribing to room:", roomId);
+        const channel = supabase
+            .channel(`room_${roomId}`)
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'rooms', 
+                filter: `id=eq.${roomId}` 
+            }, (payload) => {
+                console.log("Room update received:", payload);
+                const updatedRoom = payload.new as Room;
+                if (updatedRoom && updatedRoom.id) {
+                    setRoomData(updatedRoom);
+                    setParticipants(updatedRoom.participants || []);
+                    setIsHost(updatedRoom.host_id === user?.id);
+                    
+                    if (updatedRoom.status === 'playing') {
+                         isNavigatingToGame.current = true;
+                         setMatchFound(true);
+                         navigate(`/gameplay?mode=${mode}&roomId=${roomId}`);
+                    }
+                }
+            })
+            .subscribe((status) => {
+                console.log(`Subscription status for room ${roomId}:`, status);
+            });
+
+        return () => {
+             console.log("Unsubscribing from room (no exit):", roomId);
+             supabase.removeChannel(channel);
+        };
+    }, [roomId, user?.id, mode, navigate]);
+
+    // --- POLLING FALLBACK (Atomic Sync) ---
     useEffect(() => {
         if (!roomId || !user) return;
 
-        const fetchRoom = async () => {
-            const { data, error } = await supabase
-                .from('rooms')
-                .select('*')
-                .eq('id', roomId)
-                .single();
-
-            if (data) {
-                setRoomData(data);
-                setIsHost(data.host_id === user.id);
-                setParticipants(data.participants || []);
-                setSearching(true); // "Waiting" state
-
-                // Auto-join if not in participants
-                const isParticipant = data.participants?.some((p: Participant) => p.id === user.id);
-                if (!isParticipant) {
-                    const newParticipant: Participant = {
-                        id: user.id,
-                        display_name: displayName,
-                        avatar_url: avatarUrl,
-                        is_ready: false,
-                        is_host: false,
-                        level: profile?.level || 1,
-                        rank: profile?.rank_name || 'Bronze I'
-                    };
-                    const newParticipants = [...(data.participants || []), newParticipant];
-                    
-                    await supabase
-                        .from('rooms')
-                        .update({ participants: newParticipants, current_players: newParticipants.length })
-                        .eq('id', roomId);
-                    
-                    setParticipants(newParticipants);
-                }
-                
-                if (data.status === 'playing') {
-                     setMatchFound(true); 
-                }
-            } else {
-                console.error("Room not found", error);
-                navigate('/dashboard/arena');
-            }
-        };
-
-        fetchRoom();
-
-        // Subscribe to Room changes
-        const channel = supabase
-            .channel(`room_${roomId}`)
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
-                setRoomData(payload.new as Room);
-                setParticipants(payload.new.participants || []);
-                
-                if (payload.new.status === 'playing') {
-                     setMatchFound(true);
-                     navigate(`/gameplay?mode=${mode}&roomId=${roomId}`);
-                }
-            })
-            .subscribe();
+        console.log("Starting polling for room:", roomId);
+        const pollInterval = setInterval(() => {
+            fetchRoomData(false);
+        }, 3000); // 3 seconds fallback
 
         return () => {
-             supabase.removeChannel(channel);
+            console.log("Stopping polling for room:", roomId);
+            clearInterval(pollInterval);
         };
-    }, [roomId, user, navigate, displayName, avatarUrl, mode, profile?.level, profile?.rank_name]);
+    }, [roomId, user, fetchRoomData]);
 
     // --- MOCK PLAYER SIMULATION (for testing) ---
-    const mockPlayerAddedRef = useRef(false);
-    
-    useEffect(() => {
-        if (!roomId || !user || !isHost || !roomData) return;
-        if (mockPlayerAddedRef.current) return; // Already triggered
 
-        // Wait 5 seconds, then add mock player
-        const joinTimer = setTimeout(async () => {
-            if (mockPlayerAddedRef.current) return;
-            mockPlayerAddedRef.current = true;
-
-            const mockPlayer: Participant = {
-                id: 'mock-player-1',
-                display_name: 'CyberHunter_X',
-                avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=opponent',
-                is_ready: false,
-                is_host: false,
-                level: 15,
-                rank: 'Diamond'
-            };
-
-            // Fetch current participants from DB to avoid stale state
-            const { data: currentRoom } = await supabase
-                .from('rooms')
-                .select('participants')
-                .eq('id', roomId)
-                .single();
-
-            const currentParticipants = currentRoom?.participants || [];
-            
-            // Check if mock already exists
-            if (currentParticipants.some((p: { id: string }) => p.id === 'mock-player-1')) return;
-            if (currentParticipants.length >= 2) return;
-
-            const newParticipants = [...currentParticipants, mockPlayer];
-            
-            await supabase
-                .from('rooms')
-                .update({ participants: newParticipants, current_players: newParticipants.length })
-                .eq('id', roomId);
-
-            // Wait another 5 seconds, then mark mock player as ready
-            setTimeout(async () => {
-                const { data: roomNow } = await supabase
-                    .from('rooms')
-                    .select('participants')
-                    .eq('id', roomId)
-                    .single();
-
-                const latestParticipants = roomNow?.participants || [];
-                const updatedParticipants = latestParticipants.map((p: { id: string; is_ready?: boolean }) =>
-                    p.id === 'mock-player-1' ? { ...p, is_ready: true } : p
-                );
-
-                await supabase
-                    .from('rooms')
-                    .update({ participants: updatedParticipants })
-                    .eq('id', roomId);
-            }, 5000);
-        }, 5000);
-
-        return () => clearTimeout(joinTimer);
-    }, [roomId, user, isHost, roomData]);
 
     const handleToggleReady = async () => {
         if (!roomData || !user) return;
@@ -202,26 +256,80 @@ const ArenaLobbyView = () => {
     };
 
     const handleStartGame = async () => {
-        if (!isHost) return;
+        if (!isHost || isStarting || !roomData) return;
         
-        // Check if all guests are ready (Host is always ready effectively, but let's check everyone else)
-        // Or assume host clicking start IS the host ready signal + start signal.
-        // We need at least 2 players to start?
         if (participants.length < 2) {
             alert("Cần ít nhất 2 người chơi để bắt đầu!");
             return;
         }
-
+        
         const allReady = participants.every(p => p.is_host || p.is_ready);
         if (!allReady) {
             alert("Tất cả người chơi cần Sẵn sàng!");
             return;
         }
 
-        await supabase
-            .from('rooms')
-            .update({ status: 'playing' })
-            .eq('id', roomId);
+        setIsStarting(true);
+        try {
+            // STEP 0: Set room status to 'preparing' so guest sees the loading screen too
+            await supabase
+                .from('rooms')
+                .update({ status: 'preparing' })
+                .eq('id', roomId);
+
+            const settings = roomData.settings || {};
+            const qCount = settings.questions_per_round || 10;
+            const format = settings.format || (mode === 'Ranked' ? 'Bo5' : 'Bo3');
+
+            // Dynamic BoX Parsing
+            let gameMaxRounds = 1;
+            if (format.startsWith('Bo')) {
+                gameMaxRounds = parseInt(format.substring(2)) || 1;
+            } else {
+                gameMaxRounds = format === 'Bo5' ? 5 : (format === 'Bo3' ? 3 : 1);
+            }
+
+            console.log(`Host initializing ${format} match (${gameMaxRounds} rounds, ${qCount} q/round)...`);
+            
+            const allQuestions = [];
+            
+            // CONSOLIDATE FETCHES BY DIFFICULTY
+            // Rounds 1-2: Easy
+            const easyRounds = Math.min(gameMaxRounds, 2);
+            console.log(`Step 1: Fetching ${easyRounds * qCount} Easy questions...`);
+            const rEasy = await fetchQuestions(easyRounds * qCount, 'easy', user.id);
+            allQuestions.push(...rEasy);
+
+            // Rounds 3-4: Medium
+            if (gameMaxRounds >= 3) {
+                const mediumRounds = Math.min(gameMaxRounds - 2, 2);
+                console.log(`Step 2: Fetching ${mediumRounds * qCount} Medium questions...`);
+                const rMedium = await fetchQuestions(mediumRounds * qCount, 'medium', user.id);
+                allQuestions.push(...rMedium);
+            }
+
+            // Rounds 5+: Hard
+            if (gameMaxRounds >= 5) {
+                const hardRounds = gameMaxRounds - 4;
+                console.log(`Step 3: Fetching ${hardRounds * qCount} Hard questions...`);
+                const rHard = await fetchQuestions(hardRounds * qCount, 'hard', user.id);
+                allQuestions.push(...rHard);
+            }
+
+            console.log("Saving questions and starting match...");
+            await supabase
+                .from('rooms')
+                .update({ 
+                    status: 'playing',
+                    questions: allQuestions
+                })
+                .eq('id', roomId);
+        } catch (err) {
+            console.error("Error starting game (question fetch):", err);
+            alert("Lỗi khi chuẩn vế câu hỏi (API Busy). Vui lòng đợi 5-10 giây và thử lại!");
+        } finally {
+            setIsStarting(false);
+        }
     };
 
     // Handle Copy Code
@@ -235,33 +343,17 @@ const ArenaLobbyView = () => {
 
     // --- TIMER EFFECT ---
     useEffect(() => {
-        let interval: any;
+        let interval: number | undefined;
         if (searching && !matchFound) {
-            interval = setInterval(() => {
+            interval = window.setInterval(() => {
                 setTimer(prev => prev + 1);
             }, 1000);
         }
-        return () => clearInterval(interval);
+        return () => window.clearInterval(interval);
     }, [searching, matchFound]);
 
-    // --- MATCHMAKING SIMULATION (Only if NOT custom room) ---
-    useEffect(() => {
-        if (!roomId && searching && timer >= 5 && !matchFound) {
-            const t = setTimeout(() => {
-                setMatchFound(true);
-                setOpponent({
-                    display_name: "CyberHunter_X",
-                    avatar_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=opponent",
-                    level: 15,
-                    rank: 'Diamond',
-                    is_ready: false,
-                    is_host: false,
-                    id: 'mock-player-1'
-                });
-            }, 0);
-            return () => clearTimeout(t);
-        }
-    }, [searching, timer, matchFound, roomId]);
+    // --- MATCHMAKING LOGIC (Real rooms only) ---
+    // (Actual matching happens via the polling/subscription to the 'rooms' table)
 
     const handleFindMatch = () => {
         setSearching(true);
@@ -270,7 +362,9 @@ const ArenaLobbyView = () => {
         setOpponent(null);
     };
 
-    const handleCancelSearch = () => {
+    const handleCancelSearch = async () => {
+        setIsNavigatingAway(true);
+        if (roomId) await leaveRoom();
         setSearching(false);
         setMatchFound(false);
         setTimer(0);
@@ -278,7 +372,9 @@ const ArenaLobbyView = () => {
         if (roomId) navigate('/dashboard/arena'); // Leave room
     };
 
-    const handleDeclineMatch = () => {
+    const handleDeclineMatch = async () => {
+        setIsNavigatingAway(true);
+        if (roomId) await leaveRoom();
         setSearching(false);
         setMatchFound(false);
         setTimer(0);
@@ -287,6 +383,7 @@ const ArenaLobbyView = () => {
     };
 
     const handleAcceptMatch = () => {
+        isNavigatingToGame.current = true;
         navigate(`/gameplay?mode=${mode}&roomId=${roomId || ''}`);
     };
 
@@ -352,8 +449,23 @@ const ArenaLobbyView = () => {
 
     const details = getModeDetails();
 
+    const isSharedPreparing = roomData?.status === 'preparing' || isStarting;
+
     return (
         <div className="fixed inset-0 z-[100] bg-neutral-950 text-white p-4 h-screen overflow-hidden flex flex-col">
+            {/* Starting Overlay (Shared) */}
+            {isSharedPreparing && (
+                <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300 text-center px-6">
+                    <div className="relative mb-8">
+                         <div className="w-24 h-24 rounded-full border-4 border-fuchsia-500/20 border-t-fuchsia-500 animate-spin"></div>
+                         <div className="absolute inset-0 flex items-center justify-center">
+                             <Zap size={32} className="text-fuchsia-500 animate-pulse" />
+                         </div>
+                    </div>
+                    <h2 className="text-2xl font-black uppercase tracking-[0.2em] mb-2">Đang lấy câu hỏi...</h2>
+                    <p className="text-gray-400 text-sm max-w-xs">Hệ thống đang chuẩn bị bộ câu hỏi đồng bộ cho cả hai đấu thủ. Vui lòng chờ trong giây lát.</p>
+                </div>
+            )}
             {/* Header */}
             <div className="flex justify-between items-center mb-6 shrink-0">
                 <button 
@@ -384,9 +496,20 @@ const ArenaLobbyView = () => {
                         </span>
                     </div>
 
-                    <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight">
-                        {roomId && roomData ? roomData.name : details.title}
-                    </h1>
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight">
+                            {roomId && roomData ? roomData.name : details.title}
+                        </h1>
+                        {roomId && (
+                            <button 
+                                onClick={() => fetchRoomData(false)}
+                                className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-all active:rotate-180 duration-500"
+                                title="Làm mới dữ liệu"
+                            >
+                                <RefreshCcw size={20} className="text-gray-400" />
+                            </button>
+                        )}
+                    </div>
                     
                     {roomId && roomData ? (
                         <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 mt-4 relative overflow-hidden">
@@ -563,7 +686,7 @@ const ArenaLobbyView = () => {
                                         className="w-full h-full flex items-center justify-center hover:bg-white/10 rounded-[14px] transition-colors group"
                                     >
                                         <Plus className="text-gray-500 group-hover:text-white transition-colors" size={24} />
-                                    </button>
+                                   </button>
                                   ) : (
                                     <div className="text-white/20 font-bold">?</div>
                                   )
@@ -616,10 +739,15 @@ const ArenaLobbyView = () => {
                                     {isHost ? (
                                         <button 
                                             onClick={handleStartGame}
-                                            disabled={participants.length < 2 || participants.some(p => !p.is_host && !p.is_ready)}
+                                            disabled={isStarting || participants.length < 2 || participants.some(p => !p.is_host && !p.is_ready)}
                                             className="flex-[2] py-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-black uppercase tracking-[0.2em] shadow-lg shadow-green-900/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 text-sm"
                                         >
-                                            <Play size={20} fill="currentColor" /> Bắt đầu
+                                            {isStarting ? (
+                                                <Loader2 size={20} className="animate-spin" />
+                                            ) : (
+                                                <Play size={20} fill="currentColor" />
+                                            )}
+                                            {isStarting ? 'Đang chuẩn bị...' : 'Bắt đầu'}
                                         </button>
                                     ) : (
                                         <button 
@@ -670,7 +798,7 @@ const ArenaLobbyView = () => {
                                 </button>
                             )
                         )}
-                </div>
+                 </div>
             </div>
             
             {/* Background Decorations */}

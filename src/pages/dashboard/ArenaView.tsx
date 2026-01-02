@@ -4,6 +4,27 @@ import { Swords, Trophy, Users, Zap, Star, Play, Lock, Bookmark, X, Loader2 } fr
 import { Link, useNavigate } from 'react-router-dom';
 import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
 
+interface Participant {
+    id: string;
+    display_name: string;
+    avatar_url: string;
+    is_ready: boolean;
+    is_host: boolean;
+}
+
+interface RoomData {
+    id: string;
+    name: string;
+    code: string;
+    participants: Participant[];
+    settings: {
+        format: string;
+        questions_per_round: number;
+    };
+    status: string;
+    mode: string;
+}
+
 const ArenaView = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -12,17 +33,66 @@ const ArenaView = () => {
     navigate(`/dashboard/arena/lobby?mode=${mode}`);
   };
 
+  const [loadingRooms, setLoadingRooms] = useState(true);
+  const [roomsList, setRoomsList] = useState<RoomData[]>([]);
+
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
+    
+    // Fetch initial rooms
+    const fetchRooms = async () => {
+        setLoadingRooms(true);
+        const { data, error } = await supabase
+            .from('rooms')
+            .select('*')
+            .eq('mode', 'custom')
+            .eq('status', 'waiting')
+            .order('created_at', { ascending: false });
+        
+        if (data) setRoomsList(data as RoomData[]);
+        if (error) console.error("Error fetching rooms:", error);
+        setLoadingRooms(false);
+    };
+
+    fetchRooms();
+
+    // Subscribe to room changes
+    const channel = supabase
+        .channel('public:rooms')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
+            if (payload.eventType === 'INSERT') {
+                const newRoom = payload.new as RoomData;
+                if (newRoom.mode === 'custom' && newRoom.status === 'waiting') {
+                    setRoomsList(prev => [newRoom, ...prev]);
+                }
+            } else if (payload.eventType === 'UPDATE') {
+                const updatedRoom = payload.new as RoomData;
+                if (updatedRoom.mode === 'custom') {
+                    if (updatedRoom.status === 'waiting') {
+                        setRoomsList(prev => prev.map(r => r.id === updatedRoom.id ? updatedRoom : r));
+                    } else {
+                        // Room started playing or finished, remove from list
+                        setRoomsList(prev => prev.filter(r => r.id !== updatedRoom.id));
+                    }
+                }
+            } else if (payload.eventType === 'DELETE') {
+                setRoomsList(prev => prev.filter(r => r.id !== payload.old.id));
+            }
+        })
+        .subscribe();
+
+    return () => {
+        clearTimeout(timer);
+        supabase.removeChannel(channel);
+    };
   }, []);
 
   const [joinCode, setJoinCode] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [roomSettings, setRoomSettings] = useState({
       name: "",
-      format: "Bo3",
-      questions: 5
+      max_rounds: 3,
+      questions: 10
   });
   const [creating, setCreating] = useState(false);
 
@@ -47,6 +117,16 @@ const ArenaView = () => {
         // Generate a random 6-digit code
         const roomCode = Math.floor(100000 + Math.random() * 900000).toString();
 
+        // Fetch latest profile for correct avatar/name
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+
+        const hostDisplay = profile?.display_name || user.user_metadata?.full_name || 'Host';
+        const hostAvatar = profile?.avatar_url || user.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + user.id;
+
         const { data, error } = await supabase
             .from('rooms')
             .insert({
@@ -56,18 +136,22 @@ const ArenaView = () => {
                 mode: 'custom',
                 name: roomSettings.name,
                 settings: {
-                    format: roomSettings.format,
-                    questions_per_round: roomSettings.questions
+                    max_rounds: roomSettings.max_rounds,
+                    questions_per_round: roomSettings.questions,
+                    format: `Bo${roomSettings.max_rounds}`
                 },
                 participants: [
                     {
                         id: user.id,
-                        display_name: user.user_metadata?.full_name || 'Host',
-                        avatar_url: user.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + user.id,
-                        is_ready: true, // Host is ready by default? Or not? Let's say yes or separate start logic.
-                        is_host: true
+                        display_name: hostDisplay,
+                        avatar_url: hostAvatar,
+                        is_ready: true,
+                        is_host: true,
+                        level: profile?.level || 1,
+                        rank: profile?.rank_name || 'Bronze I'
                     }
-                ]
+                ],
+                current_players: 1
             })
             .select()
             .single();
@@ -141,46 +225,40 @@ const ArenaView = () => {
                         />
                     </div>
 
-                    {/* Checkbox Group: Format */}
+                    {/* Input Group: Rounds */}
                     <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Thể thức thi đấu</label>
-                        <div className="grid grid-cols-2 gap-4">
-                            {['Bo1', 'Bo3', 'Bo5'].map((fmt) => (
-                                <button
-                                    key={fmt}
-                                    onClick={() => setRoomSettings({...roomSettings, format: fmt})}
-                                    className={`relative px-4 py-3 rounded-xl border font-bold transition-all ${
-                                        roomSettings.format === fmt 
-                                        ? 'bg-fuchsia-600/20 border-fuchsia-500 text-white shadow-[0_0_15px_rgba(232,121,249,0.3)]' 
-                                        : 'bg-neutral-900 border-white/10 text-gray-400 hover:bg-white/5'
-                                    }`}
-                                >
-                                    {fmt}
-                                    {roomSettings.format === fmt && (
-                                        <div className="absolute top-2 right-2 w-2 h-2 bg-fuchsia-500 rounded-full animate-pulse"></div>
-                                    )}
-                                </button>
-                            ))}
+                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Số Round đấu (Tối đa)</label>
+                        <div className="flex items-center gap-4">
+                            <input 
+                                type="number" 
+                                min={1}
+                                max={9}
+                                step={2}
+                                className="w-24 bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-fuchsia-500 outline-none font-bold text-center"
+                                value={roomSettings.max_rounds}
+                                onChange={(e) => setRoomSettings({...roomSettings, max_rounds: parseInt(e.target.value) || 1})}
+                            />
+                            <div className="text-gray-500 text-xs italic">
+                                * Gợi ý: 1 (Bo1), 3 (Bo3), 5 (Bo5)
+                            </div>
                         </div>
                     </div>
 
-                    {/* Checkbox Group: Questions */}
+                    {/* Input Group: Questions */}
                     <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Số câu hỏi / Round</label>
-                        <div className="grid grid-cols-3 gap-3">
-                            {[5, 7, 10].map((q) => (
-                                <button
-                                    key={q}
-                                    onClick={() => setRoomSettings({...roomSettings, questions: q})}
-                                    className={`px-4 py-2 rounded-xl border font-bold transition-all ${
-                                        roomSettings.questions === q
-                                        ? 'bg-blue-600/20 border-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.3)]' 
-                                        : 'bg-neutral-900 border-white/10 text-gray-400 hover:bg-white/5'
-                                    }`}
-                                >
-                                    {q} câu
-                                </button>
-                            ))}
+                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Số câu hỏi mỗi Round</label>
+                        <div className="flex items-center gap-4">
+                            <input 
+                                type="number" 
+                                min={5}
+                                max={20}
+                                className="w-24 bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none font-bold text-center"
+                                value={roomSettings.questions}
+                                onChange={(e) => setRoomSettings({...roomSettings, questions: parseInt(e.target.value) || 5})}
+                            />
+                            <div className="text-gray-500 text-xs italic">
+                                * Khuyên dùng: 5 - 15 câu
+                            </div>
                         </div>
                     </div>
 
@@ -323,7 +401,26 @@ const ArenaView = () => {
 
             {/* List */}
             <div className="divide-y divide-white/5">
-              <LobbyRow name="Train team tối nay" mode="Bo5" players="1/2" isPrivate />
+              {loadingRooms ? (
+                <div className="p-8 text-center text-gray-500 text-sm">
+                   <Loader2 className="animate-spin mx-auto mb-2" size={20} />
+                   Đang tải danh sách phòng...
+                </div>
+              ) : roomsList.length > 0 ? (
+                roomsList.map((room) => (
+                    <LobbyRow 
+                        key={room.id}
+                        name={room.name} 
+                        mode={room.settings?.format || 'Bo3'} 
+                        playerCount={room.participants?.length || 0}
+                        onClick={() => navigate(`/dashboard/arena/lobby?mode=custom&roomId=${room.id}`)}
+                    />
+                ))
+              ) : (
+                <div className="p-8 text-center text-gray-500 text-sm italic">
+                    Chưa có phòng nào được tạo. Hãy tạo phòng mới!
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -383,7 +480,7 @@ interface ModeCardProps {
   title: string;
   description: string;
   image: string;
-  icon: any;
+  icon: React.ElementType;
   color: 'fuchsia' | 'blue' | 'red';
   features: string[];
   isNew?: boolean;
@@ -452,26 +549,43 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
 interface LobbyRowProps {
   name: string;
   mode: string;
-  players: string;
+  playerCount: number;
   isPrivate?: boolean;
+  onClick: () => void;
 }
 
-const LobbyRow = ({ name, mode, players, isPrivate }: LobbyRowProps) => (
-  <div className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-white/5 transition-colors cursor-pointer group">
-    <div className="col-span-5 flex items-center gap-3">
-      {isPrivate ? <Lock size={14} className="text-red-400" /> : <div className="w-3.5" />}
-      <span className="font-bold text-gray-200 group-hover:text-white truncate">{name}</span>
+const LobbyRow = ({ name, mode, playerCount, isPrivate, onClick }: LobbyRowProps) => {
+  const isFull = playerCount >= 2;
+
+  return (
+    <div 
+      onClick={isFull ? undefined : onClick}
+      className={`grid grid-cols-12 gap-4 p-4 items-center transition-colors group ${isFull ? 'bg-black/20 cursor-not-allowed opacity-60' : 'hover:bg-white/5 cursor-pointer'}`}
+    >
+      <div className="col-span-5 flex items-center gap-3">
+        {isPrivate ? <Lock size={14} className="text-red-400" /> : <div className="w-3.5" />}
+        <span className="font-bold text-gray-200 group-hover:text-white truncate">{name}</span>
+      </div>
+      <div className="col-span-2 text-center">
+        <span className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-gray-300 border border-white/5">{mode}</span>
+      </div>
+      <div className={`col-span-2 text-center text-sm font-black tracking-tighter ${isFull ? 'text-gray-500' : 'text-fuchsia-500'}`}>
+        {playerCount}/2
+      </div>
+      <div className="col-span-3 text-right">
+         <button 
+            disabled={isFull}
+            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all border ${
+                isFull 
+                ? 'bg-neutral-800 text-gray-500 border-white/5' 
+                : 'bg-white/5 hover:bg-fuchsia-600 hover:text-white text-fuchsia-400 border-white/10 hover:border-fuchsia-500'
+            }`}
+         >
+           {isFull ? 'Đã đầy' : 'Tham gia'}
+         </button>
+      </div>
     </div>
-    <div className="col-span-2 text-center">
-      <span className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-gray-300 border border-white/5">{mode}</span>
-    </div>
-    <div className="col-span-2 text-center text-sm font-medium text-gray-300">{players}</div>
-    <div className="col-span-3 text-right">
-       <button className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white/5 hover:bg-fuchsia-600 hover:text-white text-fuchsia-400 transition-all border border-white/10 hover:border-fuchsia-500">
-         Tham gia
-       </button>
-    </div>
-  </div>
-);
+  );
+};
 
 export default ArenaView;
