@@ -47,3 +47,11 @@ button{
 ::-webkit-scrollbar-thumb:hover {
   background: #444; 
 }
+
+input, textarea {
+  font-family: 'Atkinson Hyperlegible Mono', monospace !important;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+}
