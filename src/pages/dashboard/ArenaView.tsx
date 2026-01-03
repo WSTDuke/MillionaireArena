@@ -95,6 +95,17 @@ const ArenaView = () => {
       questions: 10
   });
   const [creating, setCreating] = useState(false);
+  const [alertModal, setAlertModal] = useState<{
+      show: boolean;
+      title: string;
+      message: string;
+      type: 'error' | 'warning' | 'info';
+  }>({
+      show: false,
+      title: "",
+      message: "",
+      type: 'info'
+  });
 
   // Open Modal
   const handleOpenCreateModal = async () => {
@@ -176,18 +187,49 @@ const ArenaView = () => {
       try {
           const { data, error } = await supabase
               .from('rooms')
-              .select('id')
+              .select('*')
               .eq('code', joinCode)
               .single();
 
           if (error || !data) {
-              alert('Mã phòng không tồn tại!');
+              setAlertModal({
+                  show: true,
+                  title: "Phòng không tồn tại",
+                  message: "Mã phòng bạn nhập không chính xác hoặc phòng đã bị đóng.",
+                  type: 'error'
+              });
+              return;
+          }
+
+          if (data.status !== 'waiting') {
+              setAlertModal({
+                  show: true,
+                  title: "Phòng đang thi đấu",
+                  message: "Phòng này đã bắt đầu trận đấu hoặc không còn nhận người chơi mới.",
+                  type: 'warning'
+              });
+              return;
+          }
+
+          if (data.participants && data.participants.length >= 2) {
+              setAlertModal({
+                  show: true,
+                  title: "Phòng đã đầy",
+                  message: "Phòng này đã đủ 2 người chơi. Vui lòng chọn phòng khác hoặc tự tạo phòng mới!",
+                  type: 'warning'
+              });
               return;
           }
 
           navigate(`/dashboard/arena/lobby?mode=custom&roomId=${data.id}`);
       } catch (error) {
           console.error("Error joining room:", error);
+          setAlertModal({
+              show: true,
+              title: "Lỗi kết nối",
+              message: "Đã có lỗi xảy ra khi kết nối đến phòng. Vui lòng thử lại sau.",
+              type: 'error'
+          });
       }
   };
 
@@ -282,6 +324,37 @@ const ArenaView = () => {
                     </button>
                 </div>
 
+            </div>
+        </div>
+      )}
+
+      {/* --- ALERT MODAL --- */}
+      {alertModal.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                <div className="p-6 text-center space-y-4">
+                    <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center bg-white/5 border border-white/10">
+                        {alertModal.type === 'error' ? (
+                            <X className="text-red-500" size={32} />
+                        ) : alertModal.type === 'warning' ? (
+                            <Zap className="text-yellow-500" size={32} />
+                        ) : (
+                            <Users className="text-blue-500" size={32} />
+                        )}
+                    </div>
+                    <div className="space-y-1">
+                        <h3 className="text-xl font-bold text-white leading-tight">{alertModal.title}</h3>
+                        <p className="text-gray-400 text-sm leading-relaxed">{alertModal.message}</p>
+                    </div>
+                </div>
+                <div className="p-4 border-t border-white/5 bg-neutral-900/50">
+                    <button 
+                        onClick={() => setAlertModal(prev => ({ ...prev, show: false }))}
+                        className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-all active:scale-95"
+                    >
+                        Đã hiểu
+                    </button>
+                </div>
             </div>
         </div>
       )}
