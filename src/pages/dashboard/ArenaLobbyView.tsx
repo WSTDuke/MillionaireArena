@@ -43,6 +43,7 @@ const ArenaLobbyView = () => {
     const [searching, setSearching] = useState(false);
     const [timer, setTimer] = useState(0);
     const [matchFound, setMatchFound] = useState(false);
+    const [matchCountdown, setMatchCountdown] = useState<number | null>(null);
     const [opponent, setOpponent] = useState<Participant | null>(null);
 
     const [roomData, setRoomData] = useState<Room | null>(null);
@@ -70,13 +71,20 @@ const ArenaLobbyView = () => {
         leaveRoomRef.current = leaveRoom;
     }, [leaveRoom]);
 
+    const cancelMatchmaking = useCallback(async () => {
+        if (!user?.id) return;
+        await supabase.from('matchmaking').delete().eq('user_id', user.id);
+    }, [user?.id]);
+
     // --- LEAVE ON UNMOUNT & TAB CLOSE ---
     useEffect(() => {
         mountTimeRef.current = Date.now();
         const handleBeforeUnload = () => {
              // Tab closure: always try to leave if not going to game
-             if (!isNavigatingToGame.current && leaveRoomRef.current) {
-                leaveRoomRef.current();
+             if (!isNavigatingToGame.current) {
+                if (leaveRoomRef.current) leaveRoomRef.current();
+                // Also try to cancel matchmaking if searching
+                supabase.from('matchmaking').delete().eq('user_id', user?.id).then();
              }
         };
 
@@ -100,7 +108,7 @@ const ArenaLobbyView = () => {
                 leaveRoomRef.current();
             }
         };
-    }, [isNavigatingAway]); 
+    }, [isNavigatingAway, user?.id]); 
  // Run ONLY on true unmount of this component instance
 
     // --- CUSTOM ROOM LOGIC ---
@@ -135,40 +143,45 @@ const ArenaLobbyView = () => {
                 };
 
                 // setJoining(true); // Removed unused joining state
-                try {
-                    // ATOMIC JOIN VIA RPC
-                    const { error: rpcError } = await supabase.rpc('join_room', {
-                        p_room_id: roomId,
-                        p_participant: myParticipantData
-                    });
-                    
-                    if (rpcError) {
-                        console.error("RPC Join Error:", rpcError);
-                        alert(`Lỗi khi vào phòng: ${rpcError.message}`);
-                        navigate('/dashboard/arena');
-                        return;
-                    }
-
-                    // Refresh data after RPC to be sure
-                    const { data: freshRoom } = await supabase
-                        .from('rooms')
-                        .select('*')
-                        .eq('id', roomId)
-                        .single();
+                // ATOMIC JOIN VIA RPC (Only if not already in participants)
+                const isAlreadyInRoom = data.participants?.some((p: Participant) => p.id === user.id);
+                
+                if (isAlreadyInRoom) {
+                    console.log("User already in participants list, skipping join RPC.");
+                    setParticipants(data.participants);
+                } else {
+                    try {
+                        const { error: rpcError } = await supabase.rpc('join_room', {
+                            p_room_id: roomId,
+                            p_participant: myParticipantData
+                        });
                         
-                    if (freshRoom) {
-                        setParticipants(freshRoom.participants || []);
-                        setRoomData(freshRoom);
+                        if (rpcError) {
+                            console.error("RPC Join Error:", rpcError);
+                            alert(`Lỗi khi vào phòng: ${rpcError.message}`);
+                            navigate('/dashboard/arena');
+                            return;
+                        }
+
+                        // Refresh data after RPC to be sure
+                        const { data: freshRoom } = await supabase
+                            .from('rooms')
+                            .select('*')
+                            .eq('id', roomId)
+                            .single();
+                            
+                        if (freshRoom) {
+                            setParticipants(freshRoom.participants || []);
+                            setRoomData(freshRoom);
+                        }
+                    } catch (err) {
+                        console.error("Unexpected Join Error:", err);
                     }
-                } catch (err) {
-                    console.error("Unexpected Join Error:", err);
-                } finally {
-                    // setJoining(false); 
                 }
             }
 
             if (data.status === 'playing') {
-                 setMatchFound(true); 
+                 setSearching(false); 
             }
         } else {
             console.error("Room not found", error);
@@ -233,9 +246,6 @@ const ArenaLobbyView = () => {
         };
     }, [roomId, user, fetchRoomData]);
 
-    // --- MOCK PLAYER SIMULATION (for testing) ---
-
-
     const handleToggleReady = async () => {
         if (!roomData || !user) return;
         
@@ -255,7 +265,7 @@ const ArenaLobbyView = () => {
         }
     };
 
-    const handleStartGame = async () => {
+    const handleStartGame = useCallback(async () => {
         if (!isHost || isStarting || !roomData) return;
         
         if (participants.length < 2) {
@@ -330,7 +340,42 @@ const ArenaLobbyView = () => {
         } finally {
             setIsStarting(false);
         }
-    };
+    }, [isHost, isStarting, roomData, participants, roomId, mode, user?.id]);
+
+    // --- AUTO-START FOR MATCHMAKING ---
+    useEffect(() => {
+        // Initialize countdown when match is found (and not starting yet)
+        if (roomId && mode !== 'custom' && participants.length === 2 && roomData?.status === 'waiting' && matchCountdown === null && !isStarting) {
+            setMatchCountdown(5);
+        }
+
+        // Decrement countdown
+        if (matchCountdown !== null && matchCountdown > 0) {
+            const t = setTimeout(() => {
+                setMatchCountdown(prev => (prev !== null ? prev - 1 : null));
+            }, 1000);
+            return () => clearTimeout(t);
+        }
+
+        // Start game when countdown hits 0
+        if (matchCountdown === 0) {
+            if (isHost && !isStarting && roomData?.status === 'waiting') {
+                handleStartGame();
+                // We DON'T set matchCountdown to null immediately for Host, 
+                // to prevent the "Initialize" guard above from firing again before status changes
+            } else if (!isHost) {
+                // Guest can reset once it hits 0 and they see 'preparing' soon
+                setMatchCountdown(null);
+            }
+        }
+
+        // Cleanup: If match is lost or status changes, reset countdown
+        if (participants.length < 2 || roomData?.status !== 'waiting') {
+            if (matchCountdown !== null && matchCountdown !== 0) {
+                setMatchCountdown(null);
+            }
+        }
+    }, [roomId, isStarting, isHost, mode, participants.length, roomData?.status, handleStartGame, matchCountdown]);
 
     // Handle Copy Code
     const handleCopyCode = () => {
@@ -355,86 +400,157 @@ const ArenaLobbyView = () => {
     // --- MATCHMAKING LOGIC (Real rooms only) ---
     // (Actual matching happens via the polling/subscription to the 'rooms' table)
 
-    const handleFindMatch = () => {
+    const handleFindMatch = async () => {
+        if (!user || roomId) return;
+        
         setSearching(true);
         setMatchFound(false);
         setTimer(0);
         setOpponent(null);
+
+        const myParticipantData: Participant = {
+            id: user.id,
+            display_name: displayName,
+            avatar_url: avatarUrl,
+            is_ready: true, // Auto ready for matchmaking
+            is_host: false,
+            level: profile?.level || 1,
+            rank: profile?.rank_name || 'Bronze I'
+        };
+
+        try {
+            const { data: matchedRoomId, error } = await supabase.rpc('find_or_create_match', {
+                p_user_id: user.id,
+                p_mode: mode,
+                p_participant_data: myParticipantData
+            });
+
+            if (error) throw error;
+
+            if (matchedRoomId) {
+                console.log("Match found immediately!", matchedRoomId);
+                navigate(`/dashboard/arena/lobby?mode=${mode}&roomId=${matchedRoomId}`, { replace: true });
+            } else {
+                console.log("Joined matchmaking queue...");
+            }
+        } catch (err) {
+            console.error("Matchmaking error:", err);
+            setSearching(false);
+            alert("Lỗi khi tìm trận. Vui lòng thử lại.");
+        }
     };
 
     const handleCancelSearch = async () => {
         setIsNavigatingAway(true);
-        if (roomId) await leaveRoom();
+        if (roomId) {
+            await leaveRoom();
+        } else {
+            await cancelMatchmaking();
+        }
         setSearching(false);
         setMatchFound(false);
         setTimer(0);
         setOpponent(null);
         if (roomId) navigate('/dashboard/arena'); // Leave room
-    };
-
-    const handleDeclineMatch = async () => {
-        setIsNavigatingAway(true);
-        if (roomId) await leaveRoom();
-        setSearching(false);
-        setMatchFound(false);
-        setTimer(0);
-        setOpponent(null);
-        if (roomId) navigate('/dashboard/arena'); // Leave room
-    };
-
-    const handleAcceptMatch = () => {
-        isNavigatingToGame.current = true;
-        navigate(`/gameplay?mode=${mode}&roomId=${roomId || ''}`);
     };
 
     // Helper to get opponent (for UI display)
     const opponentPlayer = participants.find(p => p.id !== user?.id);
-    // Sync local opponent state for fallback UI if needed, but we'll use 'participants' primarily
+
+    // Sync local opponent state
     useEffect(() => {
         if (opponentPlayer) {
-            // Use setTimeout to avoid cascading renders warning
             const t = setTimeout(() => {
                 setOpponent({
-                    display_name: opponentPlayer.display_name,
-                    avatar_url: opponentPlayer.avatar_url,
-                    level: opponentPlayer.level,
-                    rank: opponentPlayer.rank,
+                    display_name: opponentPlayer.display_name || 'Opponent',
+                    avatar_url: opponentPlayer.avatar_url || '',
+                    level: opponentPlayer.level || 1,
+                    rank: opponentPlayer.rank || 'Bronze I',
                     id: opponentPlayer.id,
-                    is_ready: opponentPlayer.is_ready,
-                    is_host: opponentPlayer.is_host
+                    is_ready: opponentPlayer.is_ready || false,
+                    is_host: opponentPlayer.is_host || false
                 });
-                setMatchFound(true); // To show the VS UI
+                setMatchFound(true);
             }, 0);
             return () => clearTimeout(t);
-        } else if (roomId) { // Only reset if in custom room
+        } else if (roomId && mode === 'custom') {
             const t = setTimeout(() => {
                 setMatchFound(false);
                 setOpponent(null);
             }, 0);
             return () => clearTimeout(t);
         }
-    }, [opponentPlayer, roomId]);
+    }, [opponentPlayer, roomId, mode]);
 
-    
-    // formatTime helper removed as it was unused
+    // --- MATCHMAKING SUBSCRIPTION ---
+    useEffect(() => {
+        if (roomId || !searching || !user?.id) return;
+
+        const channel = supabase
+            .channel(`matchmaking_${user.id}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'matchmaking',
+                filter: `user_id=eq.${user.id}`
+            }, (payload) => {
+                const updated = payload.new as { room_id: string | null };
+                if (updated.room_id) {
+                    console.log("Match found via subscription!", updated.room_id);
+                    cancelMatchmaking();
+                    navigate(`/dashboard/arena/lobby?mode=${mode}&roomId=${updated.room_id}`, { replace: true });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [roomId, searching, user?.id, mode, navigate, cancelMatchmaking]);
+
+    // --- MATCHMAKING POLLING FALLBACK ---
+    useEffect(() => {
+        if (roomId || !searching || !user?.id) return;
+
+        const interval = setInterval(async () => {
+            const { data, error } = await supabase
+                .from('matchmaking')
+                .select('room_id')
+                .eq('user_id', user.id)
+                .single();
+            
+            if (!error && data?.room_id) {
+                console.log("Match found via polling fallback!", data.room_id);
+                clearInterval(interval);
+                cancelMatchmaking();
+                navigate(`/dashboard/arena/lobby?mode=${mode}&roomId=${data.room_id}`, { replace: true });
+            }
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [roomId, searching, user?.id, mode, navigate, cancelMatchmaking]);
 
     const getModeDetails = () => {
         switch (mode.toLowerCase()) {
             case 'ranked':
                 return {
-                    title: 'Xếp hạng (Ranked)',
+                    title: 'Đấu hạng (Ranked)',
                     icon: Bookmark,
                     color: 'text-fuchsia-400',
                     bg: 'from-fuchsia-600/20 to-purple-600/20',
-                    border: 'border-fuchsia-500/30'
+                    border: 'border-fuchsia-500/30',
+                    format: 'Bo5',
+                    questions: '10 câu/Round'
                 };
-            case 'deathmatch':
+            case 'blitzmatch':
                 return {
-                    title: 'Tử chiến (Deathmatch)',
+                    title: 'Chớp nhoáng (Blitzmatch)',
                     icon: Zap,
                     color: 'text-red-400',
                     bg: 'from-red-600/20 to-orange-600/20',
-                    border: 'border-red-500/30'
+                    border: 'border-red-500/30',
+                    format: 'Bo3',
+                    questions: '5 câu/Round'
                 };
             default:
                 return {
@@ -442,13 +558,14 @@ const ArenaLobbyView = () => {
                     icon: Swords,
                     color: 'text-blue-400',
                     bg: 'from-blue-600/20 to-cyan-600/20',
-                    border: 'border-blue-500/30'
+                    border: 'border-blue-500/30',
+                    format: 'Bo3',
+                    questions: '10 câu/Round'
                 };
         }
     };
 
     const details = getModeDetails();
-
     const isSharedPreparing = roomData?.status === 'preparing' || isStarting;
 
     return (
@@ -468,13 +585,17 @@ const ArenaLobbyView = () => {
             )}
             {/* Header */}
             <div className="flex justify-between items-center mb-6 shrink-0">
-                <button 
-                    onClick={() => navigate('/dashboard/arena')}
-                    className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
-                >
-                    <X size={20} className="group-hover:rotate-90 transition-transform" />
-                    <span className="font-bold text-sm uppercase tracking-wider">Quay lại đấu trường</span>
-                </button>
+                {!roomId ? (
+                    <button 
+                        onClick={() => navigate('/dashboard/arena')}
+                        className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
+                    >
+                        <X size={20} className="group-hover:rotate-90 transition-transform" />
+                        <span className="font-bold text-sm uppercase tracking-wider">Quay lại đấu trường</span>
+                    </button>
+                ) : (
+                    <div /> // Spacer for custom rooms
+                )}
 
                 <div className="flex items-center gap-4 bg-neutral-900 border border-white/5 px-6 py-2 rounded-full backdrop-blur-md">
                      <div className="flex items-center gap-2">
@@ -485,7 +606,7 @@ const ArenaLobbyView = () => {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8 items-center content-center h-full pb-20">
+            <div className="flex-1 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8 items-center content-center min-h-0 overflow-hidden pb-6">
                 
                 {/* Left Column: Mode Info */}
                 <div className="space-y-6">
@@ -498,7 +619,7 @@ const ArenaLobbyView = () => {
 
                     <div className="flex items-center gap-4">
                         <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight">
-                            {roomId && roomData ? roomData.name : details.title}
+                            {mode === 'custom' && roomData ? roomData.name : details.title}
                         </h1>
                         {roomId && (
                             <button 
@@ -511,7 +632,7 @@ const ArenaLobbyView = () => {
                         )}
                     </div>
                     
-                    {roomId && roomData ? (
+                    {roomId && roomData && mode === 'custom' ? (
                         <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 mt-4 relative overflow-hidden">
                              <div className="absolute top-0 right-0 p-2 opacity-20"><Bookmark size={40} /></div>
                              <div className="text-xs text-gray-500 uppercase font-bold mb-1">Mã phòng (Room Code)</div>
@@ -525,80 +646,95 @@ const ArenaLobbyView = () => {
                         </div>
                     ) : (
                         <p className="text-gray-400 text-lg leading-relaxed">
-                            {searching ? "Đang tìm kiếm đối thủ xứng tầm..." : "Sẵn sàng tham chiến? Hãy bấm nút tìm trận để bắt đầu hành trình của bạn."}
+                            {matchFound ? "Đã tìm thấy đối thủ xứng tầm! Chuẩn bị tham chiến..." : 
+                             (searching || (roomId && mode !== 'custom')) ? "Đang tìm kiếm đối thủ xứng tầm..." : "Sẵn sàng tham chiến? Hãy bấm nút tìm trận để bắt đầu hành trình của bạn."}
                         </p>
                     )}
 
                     <div className="grid grid-cols-2 gap-4 pt-4">
                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl">
                              <div className="text-xs text-gray-500 uppercase font-bold mb-1">Thể thức</div>
-                             <div className="text-white font-bold">{roomData?.settings?.format || 'Season 12'}</div>
+                             <div className="text-white font-bold">{roomData?.settings?.format || details.format}</div>
                         </div>
                         <div className="bg-white/5 border border-white/5 p-4 rounded-2xl">
                              <div className="text-xs text-gray-500 uppercase font-bold mb-1">Câu hỏi</div>
-                             <div className="text-white font-bold">{roomData?.settings?.questions_per_round ? `${roomData.settings.questions_per_round} câu/Round` : 'Ngẫu nhiên'}</div>
+                             <div className="text-white font-bold">
+                                 {roomData?.settings?.questions_per_round 
+                                    ? `${roomData.settings.questions_per_round} câu/Round` 
+                                    : details.questions}
+                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Middle Column: Empty for custom room, Visuals for normal matchmaking */}
+                {/* Middle Column: VS Decoration */}
                 <div className="flex-1 relative flex flex-col items-center justify-center min-h-[300px]">
-                     
-                     {/* --- SEARCHING STATE (Hide for Custom Room) --- */}
-                     {searching && !matchFound && !opponent && !roomId && (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center z-10 animate-in fade-in duration-500">
-                             <div className="relative">
-                                 <div className="w-56 h-56 rounded-full border-2 border-fuchsia-500/30 animate-[spin_3s_linear_infinite]"></div>
-                                 <div className="absolute inset-0 w-56 h-56 rounded-full border-t-2 border-fuchsia-400 animate-[spin_2s_linear_infinite_reverse]"></div>
-                                 <div className="absolute inset-0 flex items-center justify-center">
-                                     <Loader2 size={40} className="text-fuchsia-500 animate-spin" />
-                                 </div>
-                             </div>
-                             <div className="mt-8 text-center space-y-2">
-                                 <div className="text-2xl font-bold text-white tracking-wider animate-pulse">
-                                     SCANNING...
-                                 </div>
-                                 <div className="text-fuchsia-400 font-mono text-lg">
-                                     {Math.floor(timer / 60).toString().padStart(2, '0')}:{(timer % 60).toString().padStart(2, '0')}
-                                 </div>
-                                 <div className="text-sm text-gray-500">Estimated time: 00:15</div>
-                             </div>
-                         </div>
-                     )}
-
-                     {/* --- IDLE STATE (Placeholder Visual) --- */}
-                     {!searching && !roomId && (
-                         <div className="relative opacity-20 select-none pointer-events-none">
-                              <Swords size={200} className="text-gray-700" />
-                         </div>
+                     <div className="relative opacity-20 select-none pointer-events-none">
+                          <Swords size={200} className="text-gray-700" />
+                     </div>
+                     {(searching || matchFound) && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                             <div className="text-8xl font-black text-white/5 tracking-tighter uppercase select-none">VS</div>
+                        </div>
                      )}
                 </div>
 
-                {/* Right Column: Opponent display or placeholder for custom room */}
+                {/* Right Column: Searching Visuals or Opponent Display */}
                 <div className="flex-1 relative flex flex-col items-center justify-center min-h-[300px]">
-                     {/* --- MATCH FOUND STATE (for both custom and normal) --- */}
-                     {matchFound && opponent && (
-                        <div className="flex flex-col items-center justify-center animate-in zoom-in-95 duration-300">
-                             <div className="relative">
-                                 <div className="w-40 h-40 rounded-full bg-neutral-800 overflow-hidden border-4 border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]">
-                                     <img src={opponent.avatar_url} className="w-full h-full object-cover" alt={opponent.display_name} />
+                     
+                     {/* --- SEARCHING STATE --- */}
+                     {((searching || (roomId && mode !== 'custom')) && !matchFound) ? (
+                         <div className="absolute inset-0 flex flex-col items-center justify-center z-10 animate-in fade-in duration-500">
+                             <div className="relative group">
+                                 {/* Vòng răng cưa ngoài (Gear Ring) */}
+                                 <div className="absolute inset-[-45px] opacity-40">
+                                     <svg viewBox="0 0 100 100" className="w-full h-full animate-[spin_12s_linear_infinite]">
+                                         <defs>
+                                             {/* Răng cưa nhỏ hơn (Smaller teeth) */}
+                                             <path id="gear-tooth" d="M49.2 0 L50.8 0 L51.5 4 L48.5 4 Z" />
+                                         </defs>
+                                         <g fill="currentColor" className={`${details.color} opacity-40`}>
+                                             {/* Tăng mật độ răng cưa lên 60 (Denser teeth: 60) */}
+                                             {Array.from({ length: 60 }).map((_, i) => (
+                                                 <use key={i} href="#gear-tooth" transform={`rotate(${i * 6} 50 50)`} />
+                                             ))}
+                                         </g>
+                                         <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1 4" className="opacity-20" />
+                                     </svg>
+                                 </div>
+
+                                 <div className={`w-56 h-56 rounded-full border-2 ${details.border} animate-[spin_3s_linear_infinite]`}></div>
+                                 <div className={`absolute inset-0 w-56 h-56 rounded-full border-t-2 ${details.color.replace('text-', 'border-')} animate-[spin_2s_linear_infinite_reverse]`}></div>
+                                 <div className="absolute inset-0 flex items-center justify-center">
+                                     <Loader2 size={40} className={`${details.color} animate-spin`} />
                                  </div>
                              </div>
-                             <div className="mt-6 text-center space-y-2">
-                                 <h3 className="text-2xl font-bold text-white">{opponent.display_name}</h3>
-                                 <div className="flex items-center justify-center gap-4 text-sm">
-                                     <span className="text-gray-400">Level <span className="text-white font-bold">{opponent.level || 1}</span></span>
-                                     <span className="text-fuchsia-400 font-bold uppercase tracking-wider">{opponent.rank || 'Bronze I'}</span>
+                         </div>
+                     ) : matchFound && opponent ? (
+                        <div className="flex flex-col items-center justify-center animate-in zoom-in-95 duration-300">
+                             <div className="relative">
+                                 <div className="w-44 h-44 rounded-full bg-neutral-800 overflow-hidden border-4 border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.4)] relative z-10">
+                                     <img src={opponent.avatar_url} className="w-full h-full object-cover" alt={opponent.display_name} />
+                                 </div>
+                                 <div className="absolute inset-[-10px] rounded-full border border-green-500/20 animate-pulse"></div>
+                             </div>
+                             <div className="mt-8 text-center space-y-2">
+                                 <h3 className="text-3xl font-black text-white uppercase tracking-tight">{opponent.display_name}</h3>
+                                 <div className="flex items-center justify-center gap-4 text-xs font-black uppercase tracking-widest">
+                                     <span className="text-gray-500">Level <span className="text-white">{opponent.level || 1}</span></span>
+                                     <span className="px-2 py-0.5 bg-fuchsia-500 text-white rounded">{opponent.rank || 'Bronze I'}</span>
                                  </div>
                              </div>
                         </div>
-                     )}
+                     ) : null}
 
-                     {/* --- CUSTOM ROOM PLACEHOLDER (only when no opponent) --- */}
-                     {roomId && !matchFound && (
+                     {/* --- IDLE/FALLBACK STATE --- */}
+                     {!searching && !matchFound && (
                         <div className="relative flex flex-col items-center gap-6">
-                            <div className="w-64 h-64 rounded-full border-2 border-white/10 flex items-center justify-center bg-white/5 backdrop-blur-sm">
-                                <span className="text-6xl font-bold text-white/20">?</span>
+                            <div className="w-64 h-64 rounded-full border-2 border-white/5 flex items-center justify-center bg-white/5 backdrop-blur-sm overflow-hidden group shadow-inner">
+                                <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                                <span className="text-7xl font-bold text-white/5 group-hover:text-white/10 transition-all duration-500">?</span>
+                                <div className="absolute bottom-6 text-[10px] font-bold text-white/5 uppercase tracking-[0.4em]">Wait for battle</div>
                             </div>
                         </div>
                      )}
@@ -645,7 +781,7 @@ const ArenaLobbyView = () => {
             )}
 
             {/* Bottom Bar: Player Slots & Actions */}
-            <div className="border-t border-white/5 pt-6 pb-6 mt-auto shrink-0 flex flex-col md:flex-row items-center justify-between gap-8 max-w-6xl mx-auto w-full">
+            <div className="border-t border-white/5 pt-4 pb-4 mt-auto shrink-0 flex flex-col md:flex-row items-center justify-between gap-8 max-w-6xl mx-auto w-full">
                  
                  {/* Player Slots */}
                  <div className="flex items-center gap-4">
@@ -725,7 +861,7 @@ const ArenaLobbyView = () => {
                          </div>
 
                         {/* --- BUTTONS LOGIC --- */}
-                        {roomId ? (
+                        {roomId && mode === 'custom' ? (
                             // CUSTOM ROOM BUTTONS
                             <div className="w-full space-y-3">
                                 <div className="flex gap-3">
@@ -762,6 +898,15 @@ const ArenaLobbyView = () => {
                                         </button>
                                     )}
                                 </div>
+                                
+                                {searching && !matchFound && (
+                                    <div className="flex justify-center items-center px-4 py-2 bg-white/5 rounded-xl border border-white/5">
+                                        <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest opacity-60">
+                                            Waiting for opponent...
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="text-xs text-center text-gray-500 font-mono">
                                     {participants.length}/2 Players Connected
                                 </div>
@@ -769,21 +914,31 @@ const ArenaLobbyView = () => {
                         ) : (
                             // NORMAL MATCHMAKING BUTTONS
                             matchFound ? (
-                                <div className="flex gap-4 w-full">
-                                    <button onClick={handleDeclineMatch} className="flex-1 py-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white font-bold transition-all border border-white/10 text-sm">
-                                        Decline
-                                    </button>
-                                    <button onClick={handleAcceptMatch} className="flex-[2] py-4 rounded-xl bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wider shadow-[0_0_30px_rgba(34,197,94,0.4)] hover:shadow-[0_0_50px_rgba(34,197,94,0.6)] animate-pulse transition-all text-sm">
-                                        Accept Match
-                                    </button>
+                                <div className="w-full py-4 rounded-xl bg-green-600/20 border border-green-500/30 flex flex-col items-center justify-center animate-pulse">
+                                    <div className="text-green-500 font-black uppercase tracking-wider text-sm mb-1">
+                                        Trận đấu sẽ bắt đầu sau:
+                                    </div>
+                                    <div className="text-white font-bold uppercase tracking-[0.2em] text-xl">
+                                        {matchCountdown !== null ? `${matchCountdown}s` : '...'}
+                                    </div>
                                 </div>
                             ) : searching ? (
-                                <button
-                                    onClick={handleCancelSearch}
-                                    className="w-full py-4 rounded-xl bg-red-950/30 hover:bg-red-900/50 text-red-500 font-bold uppercase tracking-[0.2em] transition-all border border-red-500/30 hover:border-red-500 hover:shadow-[0_0_30px_rgba(239,68,68,0.2)] active:scale-95 backdrop-blur-md group"
-                                >
-                                    <span className="group-hover:animate-pulse">Hủy tìm trận</span>
-                                </button>
+                                <div className="flex items-center gap-4 w-full">
+                                    <button
+                                        onClick={handleCancelSearch}
+                                        className="flex-1 py-4 rounded-xl bg-red-950/30 hover:bg-red-900/50 text-red-500 font-bold uppercase tracking-[0.2em] transition-all border border-red-500/30 hover:border-red-500 hover:shadow-[0_0_30px_rgba(239,68,68,0.2)] active:scale-95 backdrop-blur-md group"
+                                    >
+                                        <span className="group-hover:animate-pulse">Hủy tìm trận</span>
+                                    </button>
+                                    <div className="shrink-0 text-right space-y-0.5 pr-2">
+                                        <div className={`${details.color} font-mono text-2xl font-bold`}>
+                                            {Math.floor(timer / 60).toString().padStart(2, '0')}:{(timer % 60).toString().padStart(2, '0')}
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest opacity-60">
+                                            Est: 00:15
+                                        </div>
+                                    </div>
+                                </div>
                             ) : (
                                 <button
                                     onClick={handleFindMatch}

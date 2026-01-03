@@ -32,8 +32,8 @@ const GamePlayView = () => {
     const [searchParams] = useSearchParams();
     const mode = searchParams.get('mode') || 'Normal';
     const isRanked = mode.toLowerCase() === 'ranked';
-    const isDeathmatch = mode.toLowerCase() === 'deathmatch';
-    const QUESTION_TIME = isDeathmatch ? 10 : 15;
+    const isBlitzmatch = mode.toLowerCase() === 'blitzmatch';
+    const QUESTION_TIME = isBlitzmatch ? 10 : 15;
 
     const [profile, setProfile] = useState<Profile | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
@@ -146,7 +146,7 @@ const GamePlayView = () => {
                             if (opp) setOpponent(opp);
                         }
                         if (roomError) console.error("Error fetching room settings:", roomError);
-                    } else if (!isRanked && !isDeathmatch) {
+                    } else if (!isRanked && !isBlitzmatch) {
                         // For solo testing / old matchmaking fallback if no roomId
                         const r1 = await fetchQuestions(10, 'easy', user.id);
                         setQuestions(r1);
@@ -164,7 +164,7 @@ const GamePlayView = () => {
             }
         };
         getData();
-    }, [roomId, isRanked, isDeathmatch]);
+    }, [roomId, isRanked, isBlitzmatch]);
 
     const leaveRoom = useCallback(async () => {
         if (!roomId) return;

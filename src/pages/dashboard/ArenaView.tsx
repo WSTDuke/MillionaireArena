@@ -412,14 +412,14 @@ const ArenaView = () => {
 
         {/* Special/Event Mode */}
         <ModeCard 
-          title="Tử chiến (Deathmatch)"
+          title="Chớp nhoáng (Blitzmatch)"
           description="Suy nghĩ nhanh chóng-đưa ra kết quả chính xác."
           image="https://images.unsplash.com/photo-1538481199705-c710c4e965fc?q=80&w=1965&auto=format&fit=crop"
           icon={Zap}
           color="red"
           features={["Thể thức: Bo3", "Nhịp độ cao", "Limited Time"]}
           isNew
-          onClick={() => handleStartMode('Deathmatch')}
+          onClick={() => handleStartMode('Blitzmatch')}
         />
       </div>
 
