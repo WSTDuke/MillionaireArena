@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Users, Shield, Trophy, Plus, Search, MoreVertical, Crown, Settings, LogOut, Target, AlertTriangle, Loader2, MailCheck, MailX } from 'lucide-react';
 import CreateClanModal from '../../components/modals/CreateClanModal';
 import { CLAN_ICONS, CLAN_COLORS } from './clanConstants';
@@ -46,6 +46,11 @@ const ClanView = () => {
   const [joinRequests, setJoinRequests] = useState<MemberInfo[]>([]);
   const [userClanStatus, setUserClanStatus] = useState<{ [clanId: string]: 'pending' | 'member' }>({});
   const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>([]);
+  
+  // New state for viewing other clans
+  const [viewingClan, setViewingClan] = useState<ClanInfo | null>(null);
+  const [viewingMembers, setViewingMembers] = useState<MemberInfo[]>([]);
+  const [viewingLoading, setViewingLoading] = useState(false);
 
   const fetchMembers = useCallback(async (clanId: string) => {
     const { data: rawMembers, error: rawError } = await supabase
@@ -171,6 +176,38 @@ const ClanView = () => {
       return clanIdForSubscription;
     }
   }, [user?.id, fetchMembers]);
+
+  const handleViewClanDetails = async (clanId: string) => {
+    setViewingLoading(true);
+    try {
+      const { data: clanDetails, error: clanError } = await supabase
+        .from('clans')
+        .select('id, name, tag, description, icon, color, level, members_count')
+        .eq('id', clanId)
+        .single();
+
+      if (clanError) throw clanError;
+
+      const membersData = await fetchMembers(clanDetails.id);
+      const approvedMembers = membersData.filter(m => m.status === 'approved');
+      
+      setViewingClan({
+        ...clanDetails,
+        members_count: approvedMembers.length
+      });
+      setViewingMembers(approvedMembers);
+    } catch (err: any) {
+      console.error('Error viewing clan details:', err);
+      alert('Không thể tải thông tin clan: ' + err.message);
+    } finally {
+      setViewingLoading(false);
+    }
+  };
+
+  const handleBackToList = () => {
+    setViewingClan(null);
+    setViewingMembers([]);
+  };
 
   useEffect(() => {
     fetchClanData();
@@ -410,32 +447,67 @@ setShowPromoteConfirm(true);
 
   return (
     <div className="space-y-8 animate-fade-in-up">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-end gap-4">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-500 bg-clip-text text-transparent mb-1">
-            Clan / Đội
-          </h1>
-          <p className="text-gray-400">Quản lý đội ngũ, chiêu mộ thành viên và leo hạng Team.</p>
+      {/* Header - Only show if not viewing a specific clan */}
+      {!viewingClan && (
+        <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-white/5 pb-6">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-500 bg-clip-text text-transparent mb-1">
+              Clan / Đội
+            </h1>
+            <p className="text-gray-400">Quản lý đội ngũ, chiêu mộ thành viên và leo hạng Team.</p>
+          </div>
+          
+          <div className="flex bg-neutral-900 p-1 rounded-xl border border-white/10">
+            <button 
+              onClick={() => setActiveTab('my-clan')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'my-clan' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+            >
+              Đội của tôi
+            </button>
+            <button 
+              onClick={() => setActiveTab('find-clan')}
+              className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'find-clan' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+            >
+              Tìm Clan
+            </button>
+          </div>
         </div>
-        
-        <div className="flex bg-neutral-900 p-1 rounded-xl border border-white/10">
-          <button 
-            onClick={() => setActiveTab('my-clan')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'my-clan' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-          >
-            Đội của tôi
-          </button>
-          <button 
-            onClick={() => setActiveTab('find-clan')}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'find-clan' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-          >
-            Tìm Clan
-          </button>
-        </div>
-      </div>
+      )}
 
-      {activeTab === 'my-clan' ? (
+      {viewingClan ? (
+        <div className="space-y-6">
+          <button 
+            onClick={handleBackToList}
+            className="flex items-center gap-2 text-gray-400 hover:text-white transition-all group hover:translate-x-[-4px]"
+          >
+            <div className="p-2 bg-neutral-900 border border-white/10 rounded-xl group-hover:border-white/20 transition-all shadow-xl">
+              <LogOut className="rotate-180 w-5 h-5" />
+            </div>
+            <span className="font-bold text-lg">Quay lại danh sách Clan</span>
+          </button>
+
+          {viewingLoading ? (
+            <div className="h-[40vh] flex flex-col items-center justify-center gap-4">
+              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+              <p className="text-gray-400 font-bold animate-pulse uppercase tracking-widest">Đang tải chi tiết Clan...</p>
+            </div>
+          ) : (
+            <MyClanSection 
+              clanInfo={viewingClan} 
+              members={viewingMembers}
+              joinRequests={[]}
+              currentUserId={user?.id}
+              isViewingOnly={true}
+              onLeaveRequest={() => {}}
+              onCreateClan={() => {}} 
+              onKick={() => {}}
+              onPromote={() => {}}
+              onAcceptRequest={() => {}}
+              onRejectRequest={() => {}}
+            />
+          )}
+        </div>
+      ) : activeTab === 'my-clan' ? (
         <MyClanSection 
           clanInfo={clanInfo} 
           members={members}
@@ -455,6 +527,7 @@ setShowPromoteConfirm(true);
           onCreateClan={() => setShowCreateModal(true)} 
           onJoinClan={handleRequestToJoinClan}
           onCancelRequest={handleCancelRequest}
+          onViewDetails={handleViewClanDetails}
         />
       )}
 
@@ -514,6 +587,7 @@ const MyClanSection = ({
   onPromote,
   onAcceptRequest,
   onRejectRequest,
+  isViewingOnly = false,
 }: { 
   clanInfo: ClanInfo | null; 
   members: MemberInfo[];
@@ -525,6 +599,7 @@ const MyClanSection = ({
   onPromote: (member: MemberInfo) => void;
   onAcceptRequest: (request: MemberInfo) => void;
   onRejectRequest: (request: MemberInfo) => void;
+  isViewingOnly?: boolean;
 }) => {
   const hasClan = !!clanInfo; 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -591,7 +666,7 @@ const MyClanSection = ({
           </div>
 
           {/* Action Dropdown Button (Banner context - Settings/Leave) */}
-          {hasClan && (
+          {hasClan && !isViewingOnly && (
             <div className="absolute top-8 right-8">
                <button 
                  onClick={() => setShowDropdown(!showDropdown)}
@@ -637,7 +712,7 @@ const MyClanSection = ({
       {hasClan && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Member List */}
-          <div className="lg:col-span-2 bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
+          <div className={`${isViewingOnly ? 'lg:col-span-3' : 'lg:col-span-2'} bg-neutral-900/50 border border-white/5 rounded-2xl p-6`}>
              <div className="flex justify-between items-center mb-6">
                 <div className="flex bg-neutral-900 p-1 rounded-xl border border-white/10">
                     <button 
@@ -646,7 +721,7 @@ const MyClanSection = ({
                     >
                     Thành viên ({members.length})
                     </button>
-                    {isLeader && (
+                    {isLeader && !isViewingOnly && (
                     <button 
                         onClick={() => setMembersTab('requests')}
                         className={`relative px-4 py-2 rounded-lg text-sm font-bold transition-all ${membersTab === 'requests' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
@@ -688,16 +763,18 @@ const MyClanSection = ({
           </div>
 
           {/* Clan Activities / Wars */}
-          <div className="space-y-6">
-             <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-               <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                 <Trophy className="text-yellow-500" /> Clan Wars
-               </h3>
-                <div className="space-y-4">
-                   <div className="text-center py-10 text-gray-500 italic text-sm">Chưa có hoạt động nào...</div>
-                </div>
-             </div>
-          </div>
+          {!isViewingOnly && (
+            <div className="space-y-6">
+               <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
+                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                   <Trophy className="text-yellow-500" /> Clan Wars
+                 </h3>
+                  <div className="space-y-4">
+                     <div className="text-center py-10 text-gray-500 italic text-sm">Chưa có hoạt động nào...</div>
+                  </div>
+               </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -717,6 +794,7 @@ const MemberRow = ({
   onKick: (member: MemberInfo) => void;
   onPromote: (member: MemberInfo) => void;
 }) => {
+  const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const isLeader = member.role === 'leader';
   
@@ -757,7 +835,7 @@ const MemberRow = ({
             <div className="fixed inset-0 z-[100]" onClick={() => setShowMenu(false)} />
             <div className="absolute right-4 top-14 w-52 bg-neutral-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
               <button 
-                onClick={() => { setShowMenu(false); alert('Xem hồ sơ user: ' + member.user_id); }}
+                onClick={() => { setShowMenu(false); navigate(`/dashboard/profile?id=${member.user_id}`); }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
               >
                 Xem hồ sơ
@@ -826,7 +904,7 @@ const RequestRow = ({
     );
 };
 
-const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void }) => {
+const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest, onViewDetails }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void, onViewDetails: (id: string) => void }) => {
     const hasClan = Object.values(userClanStatus).includes('member');
     return (
         <div className="space-y-6">
@@ -864,10 +942,12 @@ const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoi
                           lvl={clan.level} 
                           desc={clan.description} 
                           userClanStatus={userClanStatus[clan.id]}
+                          isUserInAnyClan={hasClan}
                           icon={clan.icon}
                           color={clan.color}
                           onJoin={() => onJoinClan(clan.id)}
                           onCancel={() => onCancelRequest(clan.id)}
+                          onView={() => onViewDetails(clan.id)}
                       />
                     )) : (
                       <div className="p-12 text-center text-gray-500 italic">Chưa có Clan nào được thành lập.</div>
@@ -886,13 +966,15 @@ interface ClanRowProps {
   desc: string;
   lvl: number;
   userClanStatus?: 'pending' | 'member';
+  isUserInAnyClan: boolean;
   icon: string;
   color: string;
   onJoin?: () => void;
   onCancel?: () => void;
+  onView?: () => void;
 }
 
-const ClanRow = ({ id, name, tag, members, desc, lvl, userClanStatus, icon, color, onJoin, onCancel }: ClanRowProps) => {
+const ClanRow = ({ id, name, tag, members, desc, lvl, userClanStatus, isUserInAnyClan, icon, color, onJoin, onCancel, onView }: ClanRowProps) => {
   const iconObj = CLAN_ICONS.find(i => i.id === icon) || CLAN_ICONS[0];
   const colorObj = CLAN_COLORS.find(c => c.id === color) || CLAN_COLORS[0];
   const IconComp = iconObj.icon;
@@ -923,7 +1005,10 @@ const ClanRow = ({ id, name, tag, members, desc, lvl, userClanStatus, icon, colo
       
       <div className="flex items-center gap-4 ml-6">
         <div className="flex gap-2">
-          <button className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl border border-white/5 transition-all">
+          <button 
+            onClick={onView}
+            className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl border border-white/5 transition-all"
+          >
             Chi tiết
           </button>
           {!hasClan && userClanStatus === 'pending' && (
@@ -934,7 +1019,7 @@ const ClanRow = ({ id, name, tag, members, desc, lvl, userClanStatus, icon, colo
               Hủy yêu cầu
             </button>
           )}
-          {!hasClan && !userClanStatus && (
+          {!isUserInAnyClan && !userClanStatus && (
             <button 
               onClick={onJoin}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-900/20"

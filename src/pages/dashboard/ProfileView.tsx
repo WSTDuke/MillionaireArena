@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
   Trophy, Swords, Target, Clock, Zap, Medal, 
   Share2, Edit3, Calendar, Award,
@@ -22,20 +22,20 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchParams] = useSearchParams();
+  const userIdFromQuery = searchParams.get('id');
 
   useEffect(() => {
     const fetchProfileData = async () => {
       try {
-        // 1. Lấy user auth
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-
-        if (user) {
-          // 2. Lấy thông tin chi tiết từ bảng profiles
+        const targetUserId = userIdFromQuery || (await supabase.auth.getUser()).data.user?.id;
+        
+        if (targetUserId) {
+          // Fetch profile for targetUserId
           const { data, error: profileError } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', user.id)
+            .eq('id', targetUserId)
             .single();
 
           if (profileError && profileError.code !== 'PGRST116') {
@@ -44,6 +44,12 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
           
           if (data) {
             setProfile(data);
+          }
+
+          // If viewing our own profile, set user as well for email/etc
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          if (currentUser?.id === targetUserId) {
+            setUser(currentUser);
           }
         }
       } catch (error) {
@@ -54,7 +60,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
     };
 
     fetchProfileData();
-  }, []);
+  }, [userIdFromQuery]);
 
   if (loading) return <ProfilePageSkeleton />;
 
@@ -133,14 +139,16 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                   <Share2 size={18} /> <span className="hidden sm:inline">Chia sẻ</span>
                 </button>
                 
-               <Link to="/dashboard/settings">
-                <button 
-                  onClick={onEditProfile}
-                  className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(192,38,211,0.3)] flex items-center gap-2 transition-colors"
-                >
-                  <Edit3 size={18} /> Chỉnh sửa
-                </button>
-              </Link>
+                {(!userIdFromQuery || (user && user.id === userIdFromQuery)) && (
+                   <Link to="/dashboard/settings">
+                    <button 
+                      onClick={onEditProfile}
+                      className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(192,38,211,0.3)] flex items-center gap-2 transition-colors"
+                    >
+                      <Edit3 size={18} /> Chỉnh sửa
+                    </button>
+                  </Link>
+                )}
               </div>
             </div>
           </div>
