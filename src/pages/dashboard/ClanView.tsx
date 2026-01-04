@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Users, Shield, Trophy, Plus, Search, MoreVertical, Crown, Settings, LogOut, Target, AlertTriangle, Loader2 } from 'lucide-react';
+import { Users, Shield, Trophy, Plus, Search, MoreVertical, Crown, Settings, LogOut, Target, AlertTriangle, Loader2, MailCheck, MailX } from 'lucide-react';
 import CreateClanModal from '../../components/modals/CreateClanModal';
 import { CLAN_ICONS, CLAN_COLORS } from './clanConstants';
 import { supabase } from '../../lib/supabase';
@@ -21,6 +21,7 @@ interface MemberInfo {
   user_id: string;
   role: string;
   joined_at: string;
+  status: 'approved' | 'pending' | 'rejected';
   profiles: {
     display_name: string | null;
     avatar_url: string | null;
@@ -42,13 +43,16 @@ const ClanView = () => {
   const [loading, setLoading] = useState(true);
   const [clanInfo, setClanInfo] = useState<ClanInfo | null>(null);
   const [members, setMembers] = useState<MemberInfo[]>([]);
+  const [joinRequests, setJoinRequests] = useState<MemberInfo[]>([]);
+  const [userClanStatus, setUserClanStatus] = useState<{ [clanId: string]: 'pending' | 'member' }>({});
   const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>([]);
 
   const fetchMembers = useCallback(async (clanId: string) => {
     const { data: rawMembers, error: rawError } = await supabase
       .from('clan_members')
-      .select('user_id, role, joined_at')
+      .select('user_id, role, joined_at, status')
       .eq('clan_id', clanId)
+      .in('status', ['approved', 'pending'])
       .order('role', { ascending: true });
     
     if (rawError) {
@@ -82,48 +86,68 @@ const ClanView = () => {
     if (!user?.id) return;
     if (isInitialLoad) setLoading(true);
     console.log('Fetching clan data for user:', user.id);
-
+  
     let clanIdForSubscription: string | null = null;
-
+  
     try {
-      const { data: membership, error: memError } = await supabase
+      // First, check for any pending requests by the user
+      const { data: pendingRequests, error: pendingError } = await supabase
         .from('clan_members')
-        .select(`
-          clan_id,
-          role,
-          clans (id, name, tag, description, icon, color, level, members_count)
-        `)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (memError) throw memError;
-
-      if (membership && membership.clans) {
-        const clanDataRaw = membership.clans;
-        const clan = Array.isArray(clanDataRaw) ? clanDataRaw[0] : clanDataRaw;
-        
-        if (clan) {
-          clanIdForSubscription = clan.id;
-          const membersList = await fetchMembers(clan.id);
-          setMembers(membersList);
-          setClanInfo({
-            id: clan.id,
-            name: clan.name,
-            tag: clan.tag,
-            description: clan.description,
-            icon: clan.icon,
-            color: clan.color,
-            level: clan.level,
-            members_count: membersList.length, // Update count based on actual members
-            role: membership.role
-          });
-          setActiveTab('my-clan');
-        } else {
-          setClanInfo(null);
-          setActiveTab('find-clan');
+        .select('clan_id, status')
+        .eq('user_id', user.id);
+  
+      if (pendingError) throw pendingError;
+  
+      const statusMap: { [clanId: string]: 'pending' | 'member' } = {};
+      let approvedClanMembership = null;
+  
+      if (pendingRequests) {
+        for (const req of pendingRequests) {
+          if (req.status === 'approved') {
+            approvedClanMembership = req;
+            statusMap[req.clan_id] = 'member';
+          } else if (req.status === 'pending') {
+            statusMap[req.clan_id] = 'pending';
+          }
         }
+      }
+      setUserClanStatus(statusMap);
+  
+      if (approvedClanMembership) {
+        const { data: clanDetails, error: clanError } = await supabase
+          .from('clans')
+          .select('id, name, tag, description, icon, color, level, members_count')
+          .eq('id', (approvedClanMembership as any).clan_id)
+          .single();
+  
+        if (clanError) throw clanError;
+  
+        const { data: memberDetails, error: memberError } = await supabase
+          .from('clan_members')
+          .select('role')
+          .eq('user_id', user.id)
+          .eq('clan_id', (approvedClanMembership as any).clan_id)
+          .single();
+        if (memberError) throw memberError;
+  
+        clanIdForSubscription = clanDetails.id;
+        const allMembers = await fetchMembers(clanDetails.id);
+        const approvedMembers = allMembers.filter(m => m.status === 'approved');
+        const requests = allMembers.filter(m => m.status === 'pending');
+        
+        setMembers(approvedMembers);
+        setJoinRequests(requests);
+        setClanInfo({
+          ...clanDetails,
+          members_count: approvedMembers.length,
+          role: memberDetails.role
+        });
+        setActiveTab('my-clan');
+  
       } else {
         setClanInfo(null);
+        setMembers([]);
+        setJoinRequests([]);
         setActiveTab('find-clan');
       }
     } catch (err: any) {
@@ -192,7 +216,8 @@ const ClanView = () => {
         .insert({
           clan_id: newClan.id,
           user_id: user.id,
-          role: 'leader'
+          role: 'leader',
+          status: 'approved'
         });
       if (joinError) throw joinError;
       await fetchClanData();
@@ -203,19 +228,71 @@ const ClanView = () => {
     }
   };
 
-  const handleJoinClan = async (clanId: string) => {
+  const handleRequestToJoinClan = async (clanId: string) => {
+    if (!user?.id || clanInfo) return; // Already in a clan
+    if (userClanStatus[clanId] === 'pending') {
+      alert('Yêu cầu đã được gửi. Vui lòng chờ trưởng nhóm xét duyệt.');
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('clan_members')
+        .insert({ clan_id: clanId, user_id: user.id, role: 'member', status: 'pending' });
+      if (error) throw error;
+      
+      setUserClanStatus(prev => ({...prev, [clanId]: 'pending' }));
+    } catch (err: any) {
+      console.error('Error requesting to join clan:', err);
+      alert(err.message || 'Lỗi khi gửi yêu cầu tham gia Clan.');
+    }
+  };
+
+  const handleCancelRequest = async (clanId: string) => {
     if (!user?.id) return;
     try {
       const { error } = await supabase
         .from('clan_members')
-        .insert({ clan_id: clanId, user_id: user.id, role: 'member' });
+        .delete()
+        .match({ clan_id: clanId, user_id: user.id, status: 'pending' });
       if (error) throw error;
-      // The realtime listener will handle the UI update. 
-      // Manual refetch is a good fallback.
-      await fetchClanData(false);
+      setUserClanStatus(prev => {
+        const newStatus = { ...prev };
+        delete newStatus[clanId];
+        return newStatus;
+      });
     } catch (err: any) {
-      console.error('Error joining clan:', err);
-      alert(err.message || 'Lỗi khi gia nhập Clan.');
+      console.error('Error cancelling request:', err);
+      alert(err.message || 'Lỗi khi hủy yêu cầu.');
+    }
+  };
+
+  const handleAcceptRequest = async (request: MemberInfo) => {
+    if (clanInfo?.role !== 'leader') return;
+    try {
+      const { error } = await supabase
+        .from('clan_members')
+        .update({ status: 'approved' })
+        .match({ clan_id: clanInfo.id, user_id: request.user_id });
+      if (error) throw error;
+      // Realtime will update the lists
+    } catch (err: any) {
+      console.error('Error accepting request:', err);
+      alert(err.message || 'Lỗi khi chấp nhận yêu cầu.');
+    }
+  };
+  
+  const handleRejectRequest = async (request: MemberInfo) => {
+    if (clanInfo?.role !== 'leader') return;
+    try {
+      const { error } = await supabase
+        .from('clan_members')
+        .delete() // We just delete the request row
+        .match({ clan_id: clanInfo.id, user_id: request.user_id });
+      if (error) throw error;
+      // Realtime will update the lists
+    } catch (err: any) {
+      console.error('Error rejecting request:', err);
+      alert(err.message || 'Lỗi khi từ chối yêu cầu.');
     }
   };
 
@@ -240,6 +317,7 @@ const ClanView = () => {
       // But we can also clear the state immediately for faster UI feedback.
       setClanInfo(null);
       setMembers([]);
+      setJoinRequests([]);
       setActiveTab('find-clan');
       setShowLeaveConfirm(false);
       await fetchClanData(false); // Refetch recommended clans etc.
@@ -276,6 +354,7 @@ const ClanView = () => {
       
       // UI will update via realtime subscription, but immediate update feels better
       setMembers(prev => prev.filter(m => m.user_id !== targetMember.user_id));
+      setJoinRequests(prev => prev.filter(req => req.user_id !== targetMember.user_id));
       
       setShowKickConfirm(false);
       setTargetMember(null);
@@ -360,18 +439,22 @@ setShowPromoteConfirm(true);
         <MyClanSection 
           clanInfo={clanInfo} 
           members={members}
+          joinRequests={joinRequests}
           currentUserId={user?.id}
           onLeaveRequest={() => setShowLeaveConfirm(true)}
           onCreateClan={() => setShowCreateModal(true)} 
           onKick={handleKickRequest}
           onPromote={handlePromoteRequest}
+          onAcceptRequest={handleAcceptRequest}
+          onRejectRequest={handleRejectRequest}
         />
       ) : (
         <FindClanSection 
-          hasClan={!!clanInfo} 
+          userClanStatus={userClanStatus}
           recommendedClans={recommendedClans}
           onCreateClan={() => setShowCreateModal(true)} 
-          onJoinClan={handleJoinClan}
+          onJoinClan={handleRequestToJoinClan}
+          onCancelRequest={handleCancelRequest}
         />
       )}
 
@@ -422,23 +505,31 @@ setShowPromoteConfirm(true);
 
 const MyClanSection = ({ 
   clanInfo, 
-  members, 
+  members,
+  joinRequests,
   currentUserId, 
   onCreateClan, 
   onLeaveRequest,
   onKick,
-  onPromote
+  onPromote,
+  onAcceptRequest,
+  onRejectRequest,
 }: { 
   clanInfo: ClanInfo | null; 
   members: MemberInfo[];
+  joinRequests: MemberInfo[];
   currentUserId?: string;
   onCreateClan: () => void;
   onLeaveRequest: () => void;
   onKick: (member: MemberInfo) => void;
   onPromote: (member: MemberInfo) => void;
+  onAcceptRequest: (request: MemberInfo) => void;
+  onRejectRequest: (request: MemberInfo) => void;
 }) => {
   const hasClan = !!clanInfo; 
   const [showDropdown, setShowDropdown] = useState(false);
+  const [membersTab, setMembersTab] = useState('members');
+  const isLeader = clanInfo?.role === 'leader';
 
   const selectedIconObj = CLAN_ICONS.find(i => i.id === clanInfo?.icon) || CLAN_ICONS[0];
   const selectedColorObj = CLAN_COLORS.find(c => c.id === clanInfo?.color) || CLAN_COLORS[0];
@@ -548,14 +639,31 @@ const MyClanSection = ({
           {/* Member List */}
           <div className="lg:col-span-2 bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
              <div className="flex justify-between items-center mb-6">
-               <h3 className="text-xl font-bold flex items-center gap-2">
-                 <Users className="text-blue-500" /> Thành viên ({members.length})
-               </h3>
-               <button className="text-xs font-bold text-blue-400 hover:text-white uppercase tracking-widest">Xem tất cả</button>
+                <div className="flex bg-neutral-900 p-1 rounded-xl border border-white/10">
+                    <button 
+                    onClick={() => setMembersTab('members')}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${membersTab === 'members' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    >
+                    Thành viên ({members.length})
+                    </button>
+                    {isLeader && (
+                    <button 
+                        onClick={() => setMembersTab('requests')}
+                        className={`relative px-4 py-2 rounded-lg text-sm font-bold transition-all ${membersTab === 'requests' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Yêu cầu tham gia
+                        {joinRequests.length > 0 && (
+                        <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+                            {joinRequests.length}
+                        </span>
+                        )}
+                    </button>
+                    )}
+                </div>
              </div>
              
               <div className="space-y-3">
-                {members.map((member) => (
+                {membersTab === 'members' && members.map((member) => (
                   <MemberRow 
                     key={member.user_id}
                     member={member}
@@ -565,6 +673,17 @@ const MyClanSection = ({
                     onPromote={() => onPromote(member)}
                   />
                 ))}
+                {membersTab === 'requests' && isLeader && joinRequests.map((req) => (
+                  <RequestRow 
+                    key={req.user_id}
+                    request={req}
+                    onAccept={() => onAcceptRequest(req)}
+                    onReject={() => onRejectRequest(req)}
+                  />
+                ))}
+                {membersTab === 'requests' && isLeader && joinRequests.length === 0 && (
+                    <p className="text-center text-gray-500 py-8">Không có yêu cầu tham gia nào.</p>
+                )}
               </div>
           </div>
 
@@ -670,7 +789,45 @@ const MemberRow = ({
   );
 };
 
-const FindClanSection = ({ hasClan, recommendedClans, onCreateClan, onJoinClan }: { hasClan: boolean, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void }) => {
+const RequestRow = ({
+    request,
+    onAccept,
+    onReject
+}: {
+    request: MemberInfo;
+    onAccept: () => void;
+    onReject: () => void;
+}) => {
+    const displayName = request.profiles?.display_name || request.profiles?.full_name || 'Người chơi';
+    const avatarUrl = request.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${request.user_id}`;
+
+    return (
+        <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.08] transition-all relative">
+            <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center border-2 border-white/10 overflow-hidden shadow-lg">
+                    <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                </div>
+                <div>
+                    <div className="font-black text-white text-lg">{displayName}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+                        Đang chờ xét duyệt
+                    </div>
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                <button onClick={onAccept} className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all flex items-center gap-1.5">
+                    <MailCheck size={14} /> Chấp nhận
+                </button>
+                <button onClick={onReject} className="px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all flex items-center gap-1.5">
+                    <MailX size={14} /> Từ chối
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void }) => {
+    const hasClan = Object.values(userClanStatus).includes('member');
     return (
         <div className="space-y-6">
              {/* Search Bar */}
@@ -700,15 +857,17 @@ const FindClanSection = ({ hasClan, recommendedClans, onCreateClan, onJoinClan }
                     {recommendedClans.length > 0 ? recommendedClans.map((clan) => (
                       <ClanRow 
                           key={clan.id}
+                          id={clan.id}
                           name={clan.name}
                           tag={clan.tag}
                           members={clan.members_count} 
                           lvl={clan.level} 
                           desc={clan.description} 
-                          hasClan={hasClan}
+                          userClanStatus={userClanStatus[clan.id]}
                           icon={clan.icon}
                           color={clan.color}
                           onJoin={() => onJoinClan(clan.id)}
+                          onCancel={() => onCancelRequest(clan.id)}
                       />
                     )) : (
                       <div className="p-12 text-center text-gray-500 italic">Chưa có Clan nào được thành lập.</div>
@@ -720,21 +879,24 @@ const FindClanSection = ({ hasClan, recommendedClans, onCreateClan, onJoinClan }
 }
 
 interface ClanRowProps {
+  id: string;
   name: string;
   tag: string;
   members: number;
   desc: string;
   lvl: number;
-  hasClan: boolean;
+  userClanStatus?: 'pending' | 'member';
   icon: string;
   color: string;
   onJoin?: () => void;
+  onCancel?: () => void;
 }
 
-const ClanRow = ({ name, tag, members, desc, lvl, hasClan, icon, color, onJoin }: ClanRowProps) => {
+const ClanRow = ({ id, name, tag, members, desc, lvl, userClanStatus, icon, color, onJoin, onCancel }: ClanRowProps) => {
   const iconObj = CLAN_ICONS.find(i => i.id === icon) || CLAN_ICONS[0];
   const colorObj = CLAN_COLORS.find(c => c.id === color) || CLAN_COLORS[0];
   const IconComp = iconObj.icon;
+  const hasClan = userClanStatus === 'member';
 
   return (
     <div className="p-6 flex items-center justify-between hover:bg-white/5 transition-all group">
@@ -764,7 +926,15 @@ const ClanRow = ({ name, tag, members, desc, lvl, hasClan, icon, color, onJoin }
           <button className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl border border-white/5 transition-all">
             Chi tiết
           </button>
-          {!hasClan && (
+          {!hasClan && userClanStatus === 'pending' && (
+            <button 
+              onClick={onCancel}
+              className="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all"
+            >
+              Hủy yêu cầu
+            </button>
+          )}
+          {!hasClan && !userClanStatus && (
             <button 
               onClick={onJoin}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-900/20"
@@ -773,9 +943,7 @@ const ClanRow = ({ name, tag, members, desc, lvl, hasClan, icon, color, onJoin }
             </button>
           )}
         </div>
-        <button className="p-2 text-gray-500 hover:text-white transition-colors">
-          <MoreVertical size={20} />
-        </button>
+       
       </div>
     </div>
   );
