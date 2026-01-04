@@ -4,6 +4,9 @@ button{
   cursor: pointer;
 }
 
+body {
+  background-color: #000000;
+}
 .font-cursive {
   font-family: 'Atkinson Hyperlegible Mono', monospace !important;
 }

@@ -17,6 +17,17 @@ interface ClanInfo {
   role?: string;
 }
 
+interface MemberInfo {
+  user_id: string;
+  role: string;
+  joined_at: string;
+  profiles: {
+    display_name: string | null;
+    avatar_url: string | null;
+    full_name: string | null;
+  }
+}
+
 const ClanView = () => {
   const { user } = useOutletContext<{ 
     user: { id: string }; 
@@ -25,31 +36,62 @@ const ClanView = () => {
   const [activeTab, setActiveTab] = useState('find-clan'); 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showKickConfirm, setShowKickConfirm] = useState(false);
+  const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
+  const [targetMember, setTargetMember] = useState<MemberInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [clanInfo, setClanInfo] = useState<ClanInfo | null>(null);
+  const [members, setMembers] = useState<MemberInfo[]>([]);
   const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>([]);
 
-  const fetchClanData = useCallback(async () => {
+  const fetchMembers = useCallback(async (clanId: string) => {
+    const { data: rawMembers, error: rawError } = await supabase
+      .from('clan_members')
+      .select('user_id, role, joined_at')
+      .eq('clan_id', clanId)
+      .order('role', { ascending: true });
+    
+    if (rawError) {
+      console.error('Members fetch error:', rawError);
+      return [];
+    } else if (rawMembers && rawMembers.length > 0) {
+      const userIds = rawMembers.map(m => m.user_id);
+      const { data: profilesData, error: profError } = await supabase
+        .from('profiles')
+        .select('id, display_name, avatar_url, full_name')
+        .in('id', userIds);
+      
+      if (profError) {
+        console.error('Profiles fetch error:', profError);
+        return rawMembers.map(m => ({
+          ...m,
+          profiles: { display_name: null, avatar_url: null, full_name: null }
+        })) as MemberInfo[];
+      } else {
+        const mappedMembers = rawMembers.map(m => ({
+          ...m,
+          profiles: profilesData?.find(p => p.id === m.user_id) || { display_name: null, avatar_url: null, full_name: null }
+        }));
+        return mappedMembers as MemberInfo[];
+      }
+    }
+    return [];
+  }, []);
+
+  const fetchClanData = useCallback(async (isInitialLoad = true) => {
     if (!user?.id) return;
-    setLoading(true);
+    if (isInitialLoad) setLoading(true);
+    console.log('Fetching clan data for user:', user.id);
+
+    let clanIdForSubscription: string | null = null;
 
     try {
-      // 1. Fetch user's clan membership
       const { data: membership, error: memError } = await supabase
         .from('clan_members')
         .select(`
           clan_id,
           role,
-          clans (
-            id,
-            name,
-            tag,
-            description,
-            icon,
-            color,
-            level,
-            members_count
-          )
+          clans (id, name, tag, description, icon, color, level, members_count)
         `)
         .eq('user_id', user.id)
         .maybeSingle();
@@ -57,50 +99,80 @@ const ClanView = () => {
       if (memError) throw memError;
 
       if (membership && membership.clans) {
-        const clan = membership.clans as unknown as ClanInfo;
-        setClanInfo({
-          id: clan.id,
-          name: clan.name,
-          tag: clan.tag,
-          description: clan.description,
-          icon: clan.icon,
-          color: clan.color,
-          level: clan.level,
-          members_count: clan.members_count,
-          role: membership.role
-        });
-        setActiveTab('my-clan');
+        const clanDataRaw = membership.clans;
+        const clan = Array.isArray(clanDataRaw) ? clanDataRaw[0] : clanDataRaw;
+        
+        if (clan) {
+          clanIdForSubscription = clan.id;
+          const membersList = await fetchMembers(clan.id);
+          setMembers(membersList);
+          setClanInfo({
+            id: clan.id,
+            name: clan.name,
+            tag: clan.tag,
+            description: clan.description,
+            icon: clan.icon,
+            color: clan.color,
+            level: clan.level,
+            members_count: membersList.length, // Update count based on actual members
+            role: membership.role
+          });
+          setActiveTab('my-clan');
+        } else {
+          setClanInfo(null);
+          setActiveTab('find-clan');
+        }
       } else {
         setClanInfo(null);
         setActiveTab('find-clan');
       }
-
-      // 2. Fetch recommended clans
-      const { data: clans, error: clansError } = await supabase
-        .from('clans')
-        .select('*')
-        .order('members_count', { ascending: false })
-        .limit(10);
-
-      if (clansError) throw clansError;
-      setRecommendedClans(clans || []);
-
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching clan data:', err);
+      alert('Lỗi khi tải thông tin Clan: ' + err.message);
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        try {
+          const { data: clans, error: clansError } = await supabase
+            .from('clans')
+            .select('*')
+            .order('members_count', { ascending: false })
+            .limit(10);
+          if (clansError) throw clansError;
+          setRecommendedClans(clans || []);
+        } catch (err: any) {
+          console.error('Error fetching recommended clans:', err);
+        }
+        setLoading(false);
+      }
+      return clanIdForSubscription;
     }
-  }, [user?.id]);
+  }, [user?.id, fetchMembers]);
 
   useEffect(() => {
     fetchClanData();
+
+    const channel = supabase.channel('clan-changes');
+    channel
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'clan_members', 
+      }, (payload) => {
+        console.log('Clan members change received!', payload);
+        // Refetch data without setting loading state
+        fetchClanData(false);
+      })
+      .subscribe();
+
+    // Cleanup subscription on component unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchClanData]);
 
   const handleCreateClan = async (data: { name: string; tag: string; description: string; icon: string; color: string }) => {
     if (!user?.id) return;
-
     try {
-      // 1. Insert building clan
       const { data: newClan, error: createError } = await supabase
         .from('clans')
         .insert({
@@ -110,14 +182,11 @@ const ClanView = () => {
           icon: data.icon,
           color: data.color,
           creator_id: user.id,
-          members_count: 1
+          members_count: 1 // Starts with 1 member
         })
         .select()
         .single();
-
       if (createError) throw createError;
-
-      // 2. Add creator as leader
       const { error: joinError } = await supabase
         .from('clan_members')
         .insert({
@@ -125,10 +194,7 @@ const ClanView = () => {
           user_id: user.id,
           role: 'leader'
         });
-
       if (joinError) throw joinError;
-
-      // 3. Refresh
       await fetchClanData();
       setShowCreateModal(false);
     } catch (err: any) {
@@ -139,22 +205,14 @@ const ClanView = () => {
 
   const handleJoinClan = async (clanId: string) => {
     if (!user?.id) return;
-
     try {
       const { error } = await supabase
         .from('clan_members')
-        .insert({
-          clan_id: clanId,
-          user_id: user.id,
-          role: 'member'
-        });
-
+        .insert({ clan_id: clanId, user_id: user.id, role: 'member' });
       if (error) throw error;
-
-      // Update members count (simplified - in production use an RPC or trigger)
-      await supabase.rpc('increment_clan_members', { clan_id_param: clanId });
-
-      await fetchClanData();
+      // The realtime listener will handle the UI update. 
+      // Manual refetch is a good fallback.
+      await fetchClanData(false);
     } catch (err: any) {
       console.error('Error joining clan:', err);
       alert(err.message || 'Lỗi khi gia nhập Clan.');
@@ -162,26 +220,103 @@ const ClanView = () => {
   };
 
   const handleLeave = async () => {
-    if (!user?.id || !clanInfo?.id) return;
-
+    if (!clanInfo?.id || !user?.id) return;
+    
+    // Prevent leader from leaving
+    if (clanInfo.role === 'leader') {
+      alert('Trưởng nhóm không thể rời clan. Hãy chuyển giao quyền lãnh đạo trước.');
+      setShowLeaveConfirm(false);
+      return;
+    }
+    
     try {
       const { error } = await supabase
         .from('clan_members')
         .delete()
-        .eq('user_id', user.id);
+        .match({ user_id: user.id, clan_id: clanInfo.id });
 
       if (error) throw error;
-
-      // Decrement members count
-      await supabase.rpc('decrement_clan_members', { clan_id_param: clanInfo.id });
-
+      // Realtime listener will trigger refetch. 
+      // But we can also clear the state immediately for faster UI feedback.
       setClanInfo(null);
+      setMembers([]);
       setActiveTab('find-clan');
       setShowLeaveConfirm(false);
-      await fetchClanData();
+      await fetchClanData(false); // Refetch recommended clans etc.
     } catch (err: any) {
       console.error('Error leaving clan:', err);
       alert(err.message || 'Lỗi khi rời Clan.');
+    }
+  };
+
+  const handleKickRequest = (member: MemberInfo) => {
+    if (!clanInfo?.id || !user?.id) return;
+    if (clanInfo.role !== 'leader') {
+      alert('Chỉ trưởng nhóm mới có quyền xóa thành viên.');
+      return;
+    }
+    if (member.user_id === user.id) {
+      alert('Bạn không thể xóa chính mình khỏi clan.');
+      return;
+    }
+    setTargetMember(member);
+    setShowKickConfirm(true);
+  };
+
+  const handleKickMember = async () => {
+    if (!clanInfo?.id || !targetMember) return;
+    
+    try {
+      const { error } = await supabase
+        .from('clan_members')
+        .delete()
+        .match({ user_id: targetMember.user_id, clan_id: clanInfo.id });
+
+      if (error) throw error;
+      
+      // UI will update via realtime subscription, but immediate update feels better
+      setMembers(prev => prev.filter(m => m.user_id !== targetMember.user_id));
+      
+      setShowKickConfirm(false);
+      setTargetMember(null);
+    } catch (err: any) {
+      alert('Lỗi khi xóa thành viên: ' + err.message);
+      // Let realtime handle state correction on error
+    }
+  };
+
+  const handlePromoteRequest = (member: MemberInfo) => {
+    if (!clanInfo?.id || !user?.id) return;
+    if (clanInfo.role !== 'leader') {
+      alert('Chỉ trưởng nhóm mới có quyền phong thành viên làm trưởng nhóm.');
+      return;
+    }
+    if (member.user_id === user.id) {
+      alert('Bạn đã là trưởng nhóm rồi.');
+      return;
+    }
+    setTargetMember(member);
+setShowPromoteConfirm(true);
+  };
+
+  const handlePromoteToLeader = async () => {
+    if (!clanInfo?.id || !targetMember || !user?.id) return;
+    
+    try {
+      // Use RPC to ensure atomic transfer
+      const { error } = await supabase.rpc('transfer_clan_leadership', {
+        new_leader_id: targetMember.user_id,
+        old_leader_id: user.id,
+        p_clan_id: clanInfo.id
+      });
+      
+      if (error) throw error;
+
+      // UI will update via realtime subscription.
+      setShowPromoteConfirm(false);
+      setTargetMember(null);
+    } catch (err: any) {
+      alert('Lỗi khi phong trưởng nhóm: ' + err.message);
     }
   };
 
@@ -224,8 +359,12 @@ const ClanView = () => {
       {activeTab === 'my-clan' ? (
         <MyClanSection 
           clanInfo={clanInfo} 
+          members={members}
+          currentUserId={user?.id}
           onLeaveRequest={() => setShowLeaveConfirm(true)}
           onCreateClan={() => setShowCreateModal(true)} 
+          onKick={handleKickRequest}
+          onPromote={handlePromoteRequest}
         />
       ) : (
         <FindClanSection 
@@ -253,13 +392,51 @@ const ClanView = () => {
         type="danger"
       />
 
+      <ConfirmModal 
+        isOpen={showKickConfirm}
+        onClose={() => { setShowKickConfirm(false); setTargetMember(null); }}
+        onConfirm={handleKickMember}
+        title="Xác nhận Xóa Thành viên?"
+        message={`Bạn có chắc chắn muốn xóa "${targetMember?.profiles?.display_name || targetMember?.profiles?.full_name || 'thành viên này'}" ra khỏi ${clanInfo?.name}? Hành động này không thể hoàn tác.`}
+        confirmText="Xác nhận Xóa"
+        cancelText="Hủy"
+        type="danger"
+      />
+
+      <ConfirmModal 
+        isOpen={showPromoteConfirm}
+        onClose={() => { setShowPromoteConfirm(false); setTargetMember(null); }}
+        onConfirm={handlePromoteToLeader}
+        title="Xác nhận Phong Trưởng nhóm?"
+        message={`Bạn có chắc chắn muốn phong "${targetMember?.profiles?.display_name || targetMember?.profiles?.full_name || 'thành viên này'}" làm trưởng nhóm của ${clanInfo?.name}? Bạn sẽ trở thành thành viên.`}
+        confirmText="Xác nhận Phong"
+        cancelText="Hủy"
+        type="info"
+      />
+
     </div>
   );
 };
 
 // --- Sections ---
 
-const MyClanSection = ({ clanInfo, onCreateClan, onLeaveRequest }: { clanInfo: ClanInfo | null; onCreateClan: () => void, onLeaveRequest: () => void }) => {
+const MyClanSection = ({ 
+  clanInfo, 
+  members, 
+  currentUserId, 
+  onCreateClan, 
+  onLeaveRequest,
+  onKick,
+  onPromote
+}: { 
+  clanInfo: ClanInfo | null; 
+  members: MemberInfo[];
+  currentUserId?: string;
+  onCreateClan: () => void;
+  onLeaveRequest: () => void;
+  onKick: (member: MemberInfo) => void;
+  onPromote: (member: MemberInfo) => void;
+}) => {
   const hasClan = !!clanInfo; 
   const [showDropdown, setShowDropdown] = useState(false);
 
@@ -299,7 +476,7 @@ const MyClanSection = ({ clanInfo, onCreateClan, onLeaveRequest }: { clanInfo: C
 
             {hasClan && (
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-8">
-                 <StatBadge icon={Users} label="Thành viên" value={`${clanInfo?.members_count || 1}/50`} />
+                 <StatBadge icon={Users} label="Thành viên" value={`${members.length}/50`} />
                  <StatBadge icon={Trophy} label="Rank" value="Sơ Nhập" color="text-yellow-400" />
                  <StatBadge icon={Target} label="Tỷ lệ thắng" value="-- %" color="text-green-400" />
               </div>
@@ -322,7 +499,7 @@ const MyClanSection = ({ clanInfo, onCreateClan, onLeaveRequest }: { clanInfo: C
             </div>
           </div>
 
-          {/* Action Dropdown Button */}
+          {/* Action Dropdown Button (Banner context - Settings/Leave) */}
           {hasClan && (
             <div className="absolute top-8 right-8">
                <button 
@@ -347,11 +524,17 @@ const MyClanSection = ({ clanInfo, onCreateClan, onLeaveRequest }: { clanInfo: C
                       </button>
                       <div className="h-px bg-white/5 my-1" />
                       <button 
-                        onClick={() => { setShowDropdown(false); onLeaveRequest(); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
-                      >
-                         <LogOut size={18} /> Rời khỏi Clan
-                      </button>
+  onClick={() => { setShowDropdown(false); onLeaveRequest(); }}
+  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all ${
+    clanInfo?.role === 'leader'
+      ? 'text-red-500/40 cursor-not-allowed' 
+      : 'text-red-500 hover:bg-red-500/10'
+  }`}
+  disabled={clanInfo?.role === 'leader'}
+  title={clanInfo?.role === 'leader' ? 'Trưởng nhóm không thể rời đi' : 'Rời khỏi Clan'}
+>
+  <LogOut size={18} /> Rời khỏi Clan
+</button>
                    </div>
                  </>
                )}
@@ -366,29 +549,22 @@ const MyClanSection = ({ clanInfo, onCreateClan, onLeaveRequest }: { clanInfo: C
           <div className="lg:col-span-2 bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
              <div className="flex justify-between items-center mb-6">
                <h3 className="text-xl font-bold flex items-center gap-2">
-                 <Users className="text-blue-500" /> Thành viên ({clanInfo?.members_count || 1})
+                 <Users className="text-blue-500" /> Thành viên ({members.length})
                </h3>
                <button className="text-xs font-bold text-blue-400 hover:text-white uppercase tracking-widest">Xem tất cả</button>
              </div>
              
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center border-2 border-white/10 overflow-hidden">
-                      <Users size={20} className="text-white" />
-                    </div>
-                    <div>
-                      <div className="font-black text-white flex items-center gap-2">
-                        Bạn <Crown size={14} className="text-yellow-500" fill="currentColor" />
-                      </div>
-                      <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">{clanInfo?.role === 'leader' ? 'Chủ sở hữu' : 'Thành viên'}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                    <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Đang trực tuyến</span>
-                  </div>
-                </div>
+              <div className="space-y-3">
+                {members.map((member) => (
+                  <MemberRow 
+                    key={member.user_id}
+                    member={member}
+                    isCurrentUser={member.user_id === currentUserId}
+                    currentUserRole={clanInfo?.role}
+                    onKick={() => onKick(member)}
+                    onPromote={() => onPromote(member)}
+                  />
+                ))}
               </div>
           </div>
 
@@ -408,6 +584,91 @@ const MyClanSection = ({ clanInfo, onCreateClan, onLeaveRequest }: { clanInfo: C
     </div>
   );
 }
+
+const MemberRow = ({ 
+  member, 
+  isCurrentUser, 
+  currentUserRole, 
+  onKick, 
+  onPromote 
+}: { 
+  member: MemberInfo; 
+  isCurrentUser: boolean; 
+  currentUserRole?: string;
+  onKick: (member: MemberInfo) => void;
+  onPromote: (member: MemberInfo) => void;
+}) => {
+  const [showMenu, setShowMenu] = useState(false);
+  const isLeader = member.role === 'leader';
+  
+  const displayName = member.profiles?.display_name || member.profiles?.full_name || 'Người chơi';
+  const avatarUrl = member.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user_id}`;
+
+  return (
+    <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.08] transition-all relative">
+      <div className="flex items-center gap-4">
+        {/* Avatar */}
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center border-2 border-white/10 overflow-hidden shadow-lg">
+          <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+        </div>
+        
+        {/* Info */}
+        <div>
+          <div className="font-black text-white flex items-center gap-2 text-lg">
+            {isCurrentUser ? 'Bạn' : displayName} 
+            {isLeader && <Crown size={18} className="text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]" fill="currentColor" />}
+          </div>
+          <div className={`text-[10px] font-black uppercase tracking-[0.2em] ${isLeader ? 'text-yellow-500/80' : 'text-gray-500'}`}>
+            {isLeader ? 'TRƯỞNG NHÓM' : 'THÀNH VIÊN'}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions Trigger (Hidden by default, shown on group hover) */}
+      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+        <button 
+          onClick={() => setShowMenu(!showMenu)}
+          className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+        >
+          <MoreVertical size={20} />
+        </button>
+
+        {showMenu && (
+          <>
+            <div className="fixed inset-0 z-[100]" onClick={() => setShowMenu(false)} />
+            <div className="absolute right-4 top-14 w-52 bg-neutral-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+              <button 
+                onClick={() => { setShowMenu(false); alert('Xem hồ sơ user: ' + member.user_id); }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+              >
+                Xem hồ sơ
+              </button>
+
+              {/* Leader only actions for non-leader targets */}
+              {currentUserRole === 'leader' && !isLeader && !isCurrentUser && (
+                <>
+                  <div className="h-px bg-white/5 my-1" />
+                  <button 
+                    onClick={() => { setShowMenu(false); onPromote(member); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-blue-400 hover:text-white hover:bg-blue-500/10 rounded-xl transition-all"
+                  >
+                    Phong vào trưởng nhóm
+                  </button>
+                  <button 
+                    onClick={() => { setShowMenu(false); onKick(member); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
+                  >
+                    Xóa khỏi clan
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const FindClanSection = ({ hasClan, recommendedClans, onCreateClan, onJoinClan }: { hasClan: boolean, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void }) => {
     return (

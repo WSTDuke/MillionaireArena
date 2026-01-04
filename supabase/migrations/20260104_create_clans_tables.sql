@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.clans (
     description TEXT,
     icon TEXT NOT NULL,
     color TEXT NOT NULL,
-    creator_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    creator_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
     level INTEGER DEFAULT 1,
     members_count INTEGER DEFAULT 1,
     created_at TIMESTAMPTZ DEFAULT now()
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.clans (
 CREATE TABLE IF NOT EXISTS public.clan_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clan_id UUID REFERENCES public.clans(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL UNIQUE REFERENCES public.profiles(id) ON DELETE CASCADE,
     role TEXT NOT NULL DEFAULT 'member',
     joined_at TIMESTAMPTZ DEFAULT now()
 );

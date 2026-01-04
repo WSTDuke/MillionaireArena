@@ -1,6 +1,6 @@
 import { 
   Shield, Swords, Crown, Zap, Target, Flame, Skull, Star, 
-  Trophy, Heart, Ghost, Bomb, Moon, Sun, Anchor, Gem, Rocket, Cpu, 
+  Trophy, Ghost, Bomb, Moon, Sun, Anchor, Gem, Rocket, Cpu, 
   HatGlasses, Lightbulb, Music, Coffee, Beer, Axe, Pickaxe, Send,
   Sword
 } from 'lucide-react';
