@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { CLAN_ICONS, CLAN_COLORS } from '../../pages/dashboard/clanConstants';
 
-interface CreateClanModalProps {
+interface UpdateClanModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (clanData: { 
@@ -14,15 +14,22 @@ interface CreateClanModalProps {
     icon: string; 
     color: string 
   }) => void;
+  initialData: {
+    name: string;
+    tag: string;
+    description: string;
+    icon: string;
+    color: string;
+  };
 }
 
-const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSubmit }) => {
+const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSubmit, initialData }) => {
   const [formData, setFormData] = useState({
-    name: '',
-    tag: '',
-    description: '',
-    icon: 'Shield',
-    color: 'blue',
+    name: initialData.name || '',
+    tag: initialData.tag || '',
+    description: initialData.description || '',
+    icon: initialData.icon || 'Shield',
+    color: initialData.color || 'blue',
   });
 
   const [selectorView, setSelectorView] = useState<'none' | 'icons' | 'colors'>('none');
@@ -30,13 +37,6 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
   const [showConfirm, setShowConfirm] = useState(false);
 
   const handleClose = () => {
-    setFormData({
-      name: '',
-      tag: '',
-      description: '',
-      icon: 'Shield',
-      color: 'blue',
-    });
     setErrors({});
     setSelectorView('none');
     setShowConfirm(false);
@@ -67,9 +67,16 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
     handleClose();
   };
 
-  const selectedIconObj = CLAN_ICONS.find((i: any) => i.id === formData.icon) || CLAN_ICONS[0];
-  const selectedColorObj = CLAN_COLORS.find((c: any) => c.id === formData.color) || CLAN_COLORS[0];
+  const selectedIconObj = CLAN_ICONS.find((i: { id: string }) => i.id === formData.icon) || CLAN_ICONS[0];
+  const selectedColorObj = CLAN_COLORS.find((c: { id: string }) => c.id === formData.color) || CLAN_COLORS[0];
   const SelectedIcon = selectedIconObj.icon;
+
+  const isChanged = 
+    formData.name !== initialData.name ||
+    formData.tag !== initialData.tag ||
+    formData.description !== initialData.description ||
+    formData.icon !== initialData.icon ||
+    formData.color !== initialData.color;
 
   return (
     <div 
@@ -136,7 +143,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                 <div className="h-full overflow-y-auto pb-20 scrollbar-none">
                   {selectorView === 'icons' ? (
                     <div className="grid grid-cols-4 gap-4 pb-10">
-                      {CLAN_ICONS.map((item: any) => {
+                      {CLAN_ICONS.map((item: { id: string; icon: React.ElementType }) => {
                         const IconComp = item.icon;
                         return (
                           <button 
@@ -154,7 +161,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                     </div>
                   ) : (
                     <div className="grid grid-cols-4 gap-4 pb-10">
-                      {CLAN_COLORS.map((item: any) => (
+                      {CLAN_COLORS.map((item: { id: string; bg: string }) => (
                         <button 
                           key={item.id}
                           onClick={() => {
@@ -182,7 +189,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
         <div className="flex-1 p-10 flex flex-col justify-between">
            <div className="flex justify-between items-start mb-8">
               <div>
-                <h2 className="text-3xl font-black text-white uppercase tracking-tight mb-2">Thành lập Đội</h2>
+                <h2 className="text-3xl font-black text-white uppercase tracking-tight mb-2">Cài đặt Clan</h2>
                 <div className="flex gap-2">
                   <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2 py-0.5 rounded border border-white/5 bg-white/5">Hợp lệ</span>
                   <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-2 py-0.5 rounded border border-white/5 bg-white/5">Cao cấp</span>
@@ -244,8 +251,8 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                       <Zap size={24} className="text-yellow-500" fill="currentColor" />
                    </div>
                    <div>
-                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Phí thành lập</div>
-                      <div className="text-xl font-black text-white">1,000 🪙</div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Phí thay đổi</div>
+                      <div className="text-xl font-black text-white">200 🪙</div>
                    </div>
                 </div>
 
@@ -255,15 +262,16 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                      onClick={handleClose}
                      className="px-10 py-4 font-black text-gray-400 hover:text-white transition-all text-[11px] uppercase tracking-[0.2em] whitespace-nowrap"
                    >
-                     Để sau
+                     Hủy
                    </button>
                     
                     <button 
                       type="submit"
-                      className={`px-12 py-5 rounded-full font-black text-white uppercase tracking-tighter shadow-2xl transition-all active:scale-95 group flex items-center gap-4 bg-gradient-to-r ${selectedColorObj.classes} hover:shadow-[0_0_30px_rgba(249,115,22,0.3)] whitespace-nowrap`}
+                      disabled={!isChanged}
+                      className={`px-12 py-5 rounded-full font-black text-white uppercase tracking-tighter shadow-2xl transition-all active:scale-95 group flex items-center gap-4 bg-gradient-to-r ${selectedColorObj.classes} hover:shadow-[0_0_30px_rgba(249,115,22,0.3)] whitespace-nowrap ${!isChanged ? 'opacity-30 cursor-not-allowed grayscale-[0.5]' : ''}`}
                     >
-                       Xác nhận Tạo
-                       <ChevronRight size={22} className="group-hover:translate-x-1 transition-transform" />
+                       Cập nhật ngay
+                       <ChevronRight size={22} className={`${isChanged ? 'group-hover:translate-x-1' : ''} transition-transform`} />
                     </button>
                 </div>
               </div>
@@ -279,8 +287,8 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                       <SelectedIcon size={48} className="text-white" />
                    </div>
                    <div className="space-y-1">
-                     <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Xác nhận Thành lập?</h3>
-                     <p className="text-gray-400 text-sm font-bold px-4">Bạn đồng ý chi phí <span className="text-yellow-500">1,000 🪙</span> để thành lập <span className="text-blue-400">{formData.name}</span> chứ?</p>
+                     <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Xác nhận Thay đổi?</h3>
+                     <p className="text-gray-400 text-sm font-bold px-4">Hành động này sẽ tiêu tốn <span className="text-yellow-500">200 🪙</span>. Bạn có chắc chắn muốn cập nhật thông tin Clan?</p>
                    </div>
                 </div>
 
@@ -289,7 +297,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                      onClick={handleFinalSubmit}
                      className={`w-full py-5 rounded-2xl bg-gradient-to-r ${selectedColorObj.classes} text-white font-black uppercase tracking-widest shadow-2xl hover:scale-[1.02] active:scale-95 transition-all`}
                    >
-                     Xác nhận
+                     Xác nhận (200 🪙)
                    </button>
                    <button 
                      onClick={() => setShowConfirm(false)}
@@ -306,4 +314,4 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
   );
 };
 
-export default CreateClanModal;
+export default UpdateClanModal;

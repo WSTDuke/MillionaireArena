@@ -165,7 +165,7 @@ const DashboardPage = () => {
 
 // --- Sub Components ---
 
-const NavItem = ({ icon: Icon, label, active, to }) => (
+const NavItem = ({ icon: Icon, label, active, to }: { icon: React.ElementType, label: string, active: boolean, to: string }) => (
   <NavLink
     to={to}
     end={to === "/dashboard"}
@@ -196,7 +196,6 @@ const UserProfileDropup = ({
   onProfile,
 }: any) => {
   const [isOpen, setIsOpen] = useState(false);
-  const navigate = useNavigate();
 
   const displayName =
     profile?.display_name ||
@@ -272,7 +271,13 @@ const UserProfileDropup = ({
         </div>
         <div className="flex-1 overflow-hidden">
           <h4 className="text-sm font-bold truncate">{displayName}</h4>
-          <p className="text-xs text-gray-400">Hạng: --</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-gray-400 font-medium">Hạng: --</p>
+            <div className="w-1 h-1 rounded-full bg-white/10" />
+            <p className="text-xs text-yellow-500 font-black flex items-center gap-1">
+              {profile?.gold?.toLocaleString() || 0} <span className="text-[10px] opacity-70">Vàng</span>
+            </p>
+          </div>
         </div>
         <div className="text-gray-500">
           <ChevronRight

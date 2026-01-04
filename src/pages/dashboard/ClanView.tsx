@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Users, Shield, Trophy, Plus, Search, MoreVertical, Crown, Settings, LogOut, Target, AlertTriangle, Loader2, MailCheck, MailX } from 'lucide-react';
 import CreateClanModal from '../../components/modals/CreateClanModal';
+import UpdateClanModal from '../../components/modals/UpdateClanModal';
+import Toast from '../../components/Toast';
+import type { ToastType } from '../../components/Toast';
 import { CLAN_ICONS, CLAN_COLORS } from './clanConstants';
 import { supabase } from '../../lib/supabase';
 
@@ -36,6 +39,7 @@ const ClanView = () => {
 
   const [activeTab, setActiveTab] = useState('find-clan'); 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showKickConfirm, setShowKickConfirm] = useState(false);
   const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
@@ -46,11 +50,20 @@ const ClanView = () => {
   const [joinRequests, setJoinRequests] = useState<MemberInfo[]>([]);
   const [userClanStatus, setUserClanStatus] = useState<{ [clanId: string]: 'pending' | 'member' }>({});
   const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>([]);
+  const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null);
+  
+  // Ref to track user's primary clan membership for joined/kicked notifications
+  const prevClanIdRef = React.useRef<string | null>(null);
+  const isInitialStatusRef = React.useRef(true);
   
   // New state for viewing other clans
   const [viewingClan, setViewingClan] = useState<ClanInfo | null>(null);
   const [viewingMembers, setViewingMembers] = useState<MemberInfo[]>([]);
   const [viewingLoading, setViewingLoading] = useState(false);
+
+  const handleShowToast = (message: string, type: ToastType = 'success') => {
+    setToast({ message, type });
+  };
 
   const fetchMembers = useCallback(async (clanId: string) => {
     const { data: rawMembers, error: rawError } = await supabase
@@ -157,7 +170,7 @@ const ClanView = () => {
       }
     } catch (err: any) {
       console.error('Error fetching clan data:', err);
-      alert('Lỗi khi tải thông tin Clan: ' + err.message);
+      handleShowToast('Lỗi khi tải thông tin Clan: ' + err.message, 'error');
     } finally {
       if (isInitialLoad) {
         try {
@@ -198,7 +211,7 @@ const ClanView = () => {
       setViewingMembers(approvedMembers);
     } catch (err: any) {
       console.error('Error viewing clan details:', err);
-      alert('Không thể tải thông tin clan: ' + err.message);
+      handleShowToast('Không thể tải thông tin clan: ' + err.message, 'error');
     } finally {
       setViewingLoading(false);
     }
@@ -261,14 +274,45 @@ const ClanView = () => {
       setShowCreateModal(false);
     } catch (err: any) {
       console.error('Error creating clan:', err);
-      alert(err.message || 'Lỗi khi tạo Clan. Vui lòng thử lại.');
+      handleShowToast(err.message || 'Lỗi khi tạo Clan. Vui lòng thử lại.', 'error');
+    }
+  };
+
+  const handleUpdateClan = async (data: { name: string; tag: string; description: string; icon: string; color: string }) => {
+    if (!user?.id || !clanInfo?.id) return;
+    try {
+      const { data: result, error: updateError } = await supabase.rpc('update_clan_settings', {
+        p_clan_id: clanInfo.id,
+        p_user_id: user.id,
+        p_name: data.name,
+        p_tag: data.tag,
+        p_description: data.description,
+        p_icon: data.icon,
+        p_color: data.color,
+        p_cost: 200
+      });
+
+      if (updateError) throw updateError;
+      
+      if (result && !result.success) {
+        handleShowToast(result.message, 'error');
+        return;
+      }
+
+      // Success
+      await fetchClanData(false);
+      setShowUpdateModal(false);
+      handleShowToast('Cập nhật Clan thành công! (Đã trừ 200 🪙)', 'success');
+    } catch (err: any) {
+      console.error('Error updating clan:', err);
+      handleShowToast(err.message || 'Lỗi khi cập nhật Clan.', 'error');
     }
   };
 
   const handleRequestToJoinClan = async (clanId: string) => {
     if (!user?.id || clanInfo) return; // Already in a clan
     if (userClanStatus[clanId] === 'pending') {
-      alert('Yêu cầu đã được gửi. Vui lòng chờ trưởng nhóm xét duyệt.');
+      handleShowToast('Yêu cầu đã được gửi. Vui lòng chờ trưởng nhóm xét duyệt.', 'info');
       return;
     }
     try {
@@ -278,9 +322,10 @@ const ClanView = () => {
       if (error) throw error;
       
       setUserClanStatus(prev => ({...prev, [clanId]: 'pending' }));
+      handleShowToast('Đã gửi yêu cầu tham gia Clan!', 'success');
     } catch (err: any) {
       console.error('Error requesting to join clan:', err);
-      alert(err.message || 'Lỗi khi gửi yêu cầu tham gia Clan.');
+      handleShowToast(err.message || 'Lỗi khi gửi yêu cầu tham gia Clan.', 'error');
     }
   };
 
@@ -299,7 +344,7 @@ const ClanView = () => {
       });
     } catch (err: any) {
       console.error('Error cancelling request:', err);
-      alert(err.message || 'Lỗi khi hủy yêu cầu.');
+      handleShowToast(err.message || 'Lỗi khi hủy yêu cầu.', 'error');
     }
   };
 
@@ -311,10 +356,11 @@ const ClanView = () => {
         .update({ status: 'approved' })
         .match({ clan_id: clanInfo.id, user_id: request.user_id });
       if (error) throw error;
+      handleShowToast('Đã duyệt thành viên mới!', 'success');
       // Realtime will update the lists
     } catch (err: any) {
       console.error('Error accepting request:', err);
-      alert(err.message || 'Lỗi khi chấp nhận yêu cầu.');
+      handleShowToast(err.message || 'Lỗi khi chấp nhận yêu cầu.', 'error');
     }
   };
   
@@ -326,10 +372,11 @@ const ClanView = () => {
         .delete() // We just delete the request row
         .match({ clan_id: clanInfo.id, user_id: request.user_id });
       if (error) throw error;
+      handleShowToast('Đã từ chối yêu cầu.', 'info');
       // Realtime will update the lists
     } catch (err: any) {
       console.error('Error rejecting request:', err);
-      alert(err.message || 'Lỗi khi từ chối yêu cầu.');
+      handleShowToast(err.message || 'Lỗi khi từ chối yêu cầu.', 'error');
     }
   };
 
@@ -338,7 +385,7 @@ const ClanView = () => {
     
     // Prevent leader from leaving
     if (clanInfo.role === 'leader') {
-      alert('Trưởng nhóm không thể rời clan. Hãy chuyển giao quyền lãnh đạo trước.');
+      handleShowToast('Trưởng nhóm không thể rời clan. Hãy chuyển giao quyền lãnh đạo trước.', 'error');
       setShowLeaveConfirm(false);
       return;
     }
@@ -360,18 +407,18 @@ const ClanView = () => {
       await fetchClanData(false); // Refetch recommended clans etc.
     } catch (err: any) {
       console.error('Error leaving clan:', err);
-      alert(err.message || 'Lỗi khi rời Clan.');
+      handleShowToast(err.message || 'Lỗi khi rời Clan.', 'error');
     }
   };
 
   const handleKickRequest = (member: MemberInfo) => {
     if (!clanInfo?.id || !user?.id) return;
     if (clanInfo.role !== 'leader') {
-      alert('Chỉ trưởng nhóm mới có quyền xóa thành viên.');
+      handleShowToast('Chỉ trưởng nhóm mới có quyền xóa thành viên.', 'error');
       return;
     }
     if (member.user_id === user.id) {
-      alert('Bạn không thể xóa chính mình khỏi clan.');
+      handleShowToast('Bạn không thể xóa chính mình khỏi clan.', 'error');
       return;
     }
     setTargetMember(member);
@@ -395,8 +442,9 @@ const ClanView = () => {
       
       setShowKickConfirm(false);
       setTargetMember(null);
+      handleShowToast('Đã xóa thành viên khỏi Clan.', 'info');
     } catch (err: any) {
-      alert('Lỗi khi xóa thành viên: ' + err.message);
+      handleShowToast('Lỗi khi xóa thành viên: ' + err.message, 'error');
       // Let realtime handle state correction on error
     }
   };
@@ -404,11 +452,11 @@ const ClanView = () => {
   const handlePromoteRequest = (member: MemberInfo) => {
     if (!clanInfo?.id || !user?.id) return;
     if (clanInfo.role !== 'leader') {
-      alert('Chỉ trưởng nhóm mới có quyền phong thành viên làm trưởng nhóm.');
+      handleShowToast('Chỉ trưởng nhóm mới có quyền phong thành viên làm trưởng nhóm.', 'error');
       return;
     }
     if (member.user_id === user.id) {
-      alert('Bạn đã là trưởng nhóm rồi.');
+      handleShowToast('Bạn đã là trưởng nhóm rồi.', 'info');
       return;
     }
     setTargetMember(member);
@@ -427,14 +475,37 @@ setShowPromoteConfirm(true);
       });
       
       if (error) throw error;
-
+      
       // UI will update via realtime subscription.
       setShowPromoteConfirm(false);
       setTargetMember(null);
+      handleShowToast('Đã phong trưởng nhóm mới thành công!', 'success');
     } catch (err: any) {
-      alert('Lỗi khi phong trưởng nhóm: ' + err.message);
+      handleShowToast('Lỗi khi phong trưởng nhóm: ' + err.message, 'error');
     }
   };
+
+  // Effect to detect when user joined or was kicked from a clan
+  useEffect(() => {
+    // Wait until the initial load is complete before setting baseline or triggering toasts
+    if (loading && isInitialStatusRef.current) return;
+
+    const currentClanId = clanInfo?.id || null;
+    
+    if (isInitialStatusRef.current) {
+      prevClanIdRef.current = currentClanId;
+      isInitialStatusRef.current = false;
+      return;
+    }
+
+    if (prevClanIdRef.current === null && currentClanId !== null) {
+      handleShowToast(`Chào mừng bạn gia nhập Clan: ${clanInfo?.name}!`, 'success');
+    } else if (prevClanIdRef.current !== null && currentClanId === null) {
+      handleShowToast('Bạn đã rời khỏi hoặc bị xóa khỏi Clan.', 'info');
+    }
+
+    prevClanIdRef.current = currentClanId;
+  }, [clanInfo?.id, clanInfo?.name, loading]);
 
   if (loading) {
     return (
@@ -447,6 +518,15 @@ setShowPromoteConfirm(true);
 
   return (
     <div className="space-y-8 animate-fade-in-up">
+      {/* Toast Notification */}
+      {toast && (
+        <Toast 
+          message={toast.message} 
+          type={toast.type} 
+          onClose={() => setToast(null)} 
+        />
+      )}
+      
       {/* Header - Only show if not viewing a specific clan */}
       {!viewingClan && (
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-white/5 pb-6">
@@ -519,6 +599,7 @@ setShowPromoteConfirm(true);
           onPromote={handlePromoteRequest}
           onAcceptRequest={handleAcceptRequest}
           onRejectRequest={handleRejectRequest}
+          onSettingsClick={() => setShowUpdateModal(true)}
         />
       ) : (
         <FindClanSection 
@@ -536,6 +617,22 @@ setShowPromoteConfirm(true);
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateClan}
       />
+
+      {clanInfo && (
+        <UpdateClanModal 
+          key={showUpdateModal ? 'open' : 'closed'}
+          isOpen={showUpdateModal}
+          onClose={() => setShowUpdateModal(false)}
+          onSubmit={handleUpdateClan}
+          initialData={{
+            name: clanInfo.name,
+            tag: clanInfo.tag,
+            description: clanInfo.description,
+            icon: clanInfo.icon,
+            color: clanInfo.color
+          }}
+        />
+      )}
 
       <ConfirmModal 
         isOpen={showLeaveConfirm}
@@ -587,6 +684,7 @@ const MyClanSection = ({
   onPromote,
   onAcceptRequest,
   onRejectRequest,
+  onSettingsClick,
   isViewingOnly = false,
 }: { 
   clanInfo: ClanInfo | null; 
@@ -599,6 +697,7 @@ const MyClanSection = ({
   onPromote: (member: MemberInfo) => void;
   onAcceptRequest: (request: MemberInfo) => void;
   onRejectRequest: (request: MemberInfo) => void;
+  onSettingsClick?: () => void;
   isViewingOnly?: boolean;
 }) => {
   const hasClan = !!clanInfo; 
@@ -683,8 +782,14 @@ const MyClanSection = ({
                    />
                    <div className="absolute right-0 mt-3 w-56 bg-neutral-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
                       <button 
-                        onClick={() => { setShowDropdown(false); alert('Đang mở Cài đặt...'); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
+                        onClick={() => { setShowDropdown(false); onSettingsClick?.(); }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-bold rounded-xl transition-all ${
+                          clanInfo?.role === 'leader'
+                            ? 'text-gray-400 hover:text-white hover:bg-white/5'
+                            : 'text-gray-400/40 cursor-not-allowed'
+                        }`}
+                        disabled={clanInfo?.role !== 'leader'}
+                        title={clanInfo?.role !== 'leader' ? 'Chỉ trưởng nhóm mới có quyền cài đặt' : 'Cài đặt Clan'}
                       >
                          <Settings size={18} /> Cài đặt Clan
                       </button>
