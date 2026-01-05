@@ -1,12 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
-import { Users, Shield, Trophy, Plus, Search, MoreVertical, Crown, Settings, LogOut, Target, AlertTriangle, Loader2, MailCheck, MailX } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { 
+  Trophy, Target, 
+  Users,
+  LogOut,
+  MoreVertical,
+  Settings,
+  Shield,
+  Crown,
+  Plus,
+  Search,
+  AlertTriangle,
+  MailCheck,
+  MailX
+} from 'lucide-react';
 import CreateClanModal from '../../components/modals/CreateClanModal';
 import UpdateClanModal from '../../components/modals/UpdateClanModal';
 import Toast from '../../components/Toast';
 import type { ToastType } from '../../components/Toast';
+import { ClanPageSkeleton } from '../../components/LoadingSkeletons';
 import { CLAN_ICONS, CLAN_COLORS } from './clanConstants';
-import { supabase } from '../../lib/supabase';
+import { getRankFromMMR } from '../../lib/ranking';
 
 interface ClanInfo {
   id: string;
@@ -29,6 +44,7 @@ interface MemberInfo {
     display_name: string | null;
     avatar_url: string | null;
     full_name: string | null;
+    mmr: number | null;
   }
 }
 
@@ -80,19 +96,19 @@ const ClanView = () => {
       const userIds = rawMembers.map(m => m.user_id);
       const { data: profilesData, error: profError } = await supabase
         .from('profiles')
-        .select('id, display_name, avatar_url, full_name')
+        .select('id, display_name, avatar_url, full_name, mmr')
         .in('id', userIds);
       
       if (profError) {
         console.error('Profiles fetch error:', profError);
         return rawMembers.map(m => ({
           ...m,
-          profiles: { display_name: null, avatar_url: null, full_name: null }
+          profiles: { display_name: null, avatar_url: null, full_name: null, mmr: null }
         })) as MemberInfo[];
       } else {
         const mappedMembers = rawMembers.map(m => ({
           ...m,
-          profiles: profilesData?.find(p => p.id === m.user_id) || { display_name: null, avatar_url: null, full_name: null }
+          profiles: profilesData?.find(p => p.id === m.user_id) || { display_name: null, avatar_url: null, full_name: null, mmr: null }
         }));
         return mappedMembers as MemberInfo[];
       }
@@ -508,12 +524,7 @@ setShowPromoteConfirm(true);
   }, [clanInfo?.id, clanInfo?.name, loading]);
 
   if (loading) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
-        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-        <p className="text-gray-400 font-bold animate-pulse uppercase tracking-widest">Đang tải dữ liệu Clan...</p>
-      </div>
-    );
+    return <ClanPageSkeleton />;
   }
 
   return (
@@ -567,9 +578,16 @@ setShowPromoteConfirm(true);
           </button>
 
           {viewingLoading ? (
-            <div className="h-[40vh] flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
-              <p className="text-gray-400 font-bold animate-pulse uppercase tracking-widest">Đang tải chi tiết Clan...</p>
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-16 bg-neutral-800 rounded-xl animate-pulse" />
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <MyClanSection 
@@ -905,20 +923,28 @@ const MemberRow = ({
   
   const displayName = member.profiles?.display_name || member.profiles?.full_name || 'Người chơi';
   const avatarUrl = member.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user_id}`;
+  const rankInfo = getRankFromMMR(member.profiles?.mmr);
 
   return (
     <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.08] transition-all relative">
-      <div className="flex items-center gap-4">
-        {/* Avatar */}
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center border-2 border-white/10 overflow-hidden shadow-lg">
-          <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+      <div className="flex items-center gap-4 flex-1">
+        <div className="relative">
+          <img src={avatarUrl} alt={displayName} className="w-12 h-12 rounded-xl bg-neutral-900 object-cover border border-white/5" />
         </div>
         
         {/* Info */}
-        <div>
-          <div className="font-black text-white flex items-center gap-2 text-lg">
-            {isCurrentUser ? 'Bạn' : displayName} 
-            {isLeader && <Crown size={18} className="text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]" fill="currentColor" />}
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+            <div className="font-black text-white flex items-center gap-2 text-lg">
+              {isCurrentUser ? 'Bạn' : displayName} 
+              {isLeader && <Crown size={18} className="text-yellow-500 drop-shadow-[0_0_8px_rgba(234,179,8,0.5)]" fill="currentColor" />}
+            </div>
+            <span 
+              className="px-2 py-0.5 rounded text-[9px] font-black border bg-white/5" 
+              style={{ color: rankInfo.color, borderColor: `${rankInfo.color}33` }}
+            >
+              {rankInfo.tier === 'Unranked' ? 'CHƯA HẠNG' : `${rankInfo.tier} ${rankInfo.division}`.toUpperCase()}
+            </span>
           </div>
           <div className={`text-[10px] font-black uppercase tracking-[0.2em] ${isLeader ? 'text-yellow-500/80' : 'text-gray-500'}`}>
             {isLeader ? 'TRƯỞNG NHÓM' : 'THÀNH VIÊN'}
@@ -983,20 +1009,27 @@ const RequestRow = ({
 }) => {
     const displayName = request.profiles?.display_name || request.profiles?.full_name || 'Người chơi';
     const avatarUrl = request.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${request.user_id}`;
+    const rankInfo = getRankFromMMR(request.profiles?.mmr);
 
     return (
-        <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.08] transition-all relative">
-            <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center border-2 border-white/10 overflow-hidden shadow-lg">
-                    <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-                </div>
-                <div>
-                    <div className="font-black text-white text-lg">{displayName}</div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
-                        Đang chờ xét duyệt
-                    </div>
-                </div>
-            </div>
+        <div className="flex items-center justify-between p-4 bg-neutral-900/50 border border-white/5 rounded-2xl group hover:border-blue-500/20 transition-all">
+      <div className="flex items-center gap-4 flex-1">
+        <div className="relative">
+          <img src={avatarUrl} alt={displayName} className="w-12 h-12 rounded-xl bg-neutral-900 object-cover border border-white/5" />
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+             <div className="font-black text-white">{displayName}</div>
+             <span 
+               className="px-2 py-0.5 rounded text-[8px] font-black border bg-white/5" 
+               style={{ color: rankInfo.color, borderColor: `${rankInfo.color}33` }}
+             >
+               {rankInfo.tier === 'Unranked' ? 'CHƯA HẠNG' : `${rankInfo.tier} ${rankInfo.division}`.toUpperCase()}
+             </span>
+          </div>
+          <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Yêu cầu tham gia</div>
+        </div>
+      </div>
             <div className="flex items-center gap-2">
                 <button onClick={onAccept} className="px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all flex items-center gap-1.5">
                     <MailCheck size={14} /> Chấp nhận
@@ -1079,7 +1112,7 @@ interface ClanRowProps {
   onView?: () => void;
 }
 
-const ClanRow = ({ id, name, tag, members, desc, lvl, userClanStatus, isUserInAnyClan, icon, color, onJoin, onCancel, onView }: ClanRowProps) => {
+const ClanRow = ({ name, tag, members, desc, lvl, userClanStatus, isUserInAnyClan, icon, color, onJoin, onCancel, onView }: ClanRowProps) => {
   const iconObj = CLAN_ICONS.find(i => i.id === icon) || CLAN_ICONS[0];
   const colorObj = CLAN_COLORS.find(c => c.id === color) || CLAN_COLORS[0];
   const IconComp = iconObj.icon;

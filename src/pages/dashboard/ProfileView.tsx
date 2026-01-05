@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ElementType } from 'react';
 import { supabase } from '../../lib/supabase';
+import type { User } from '@supabase/supabase-js';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
   Trophy, Swords, Target, Clock, Zap, Medal, 
-  Share2, Edit3, Calendar, Award,
-  Bookmark
+  Share2, Edit3, Award,
+  Bookmark,
+  Users
 } from 'lucide-react';
 import { ProfilePageSkeleton } from '../../components/LoadingSkeletons';
+import { getRankFromMMR } from '../../lib/ranking';
+import RankBadge from '../../components/shared/RankBadge';
 
 interface ProfileData {
   id: string;
@@ -16,10 +20,11 @@ interface ProfileData {
   description?: string | null;
   display_name?: string | null;
   created_at?: string;
+  mmr?: number | null;
 }
 
 const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
@@ -63,9 +68,8 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   }, [userIdFromQuery]);
 
   if (loading) return <ProfilePageSkeleton />;
-
-
-  // Logic ưu tiên hiển thị: Profile DB -> User Metadata -> Email -> Default
+  
+  const rankInfo = getRankFromMMR(profile?.mmr ?? null);
   const displayName = profile?.display_name || user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'User';
   const fullName = profile?.full_name || user?.user_metadata?.full_name;
   
@@ -107,40 +111,43 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
 
           {/* Text Info */}
           <div className="flex-1 mb-2">
-            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
-              <div>
-                <h1 className="text-3xl font-bold text-white flex items-end gap-2 flex-wrap">
-                  <span>{displayName}</span>
-                  {fullName && fullName !== displayName && (
-                    <span className="text-xl font-medium text-gray-400 pb-0.5">({fullName})</span>
-                  )}
-                  <Medal className="text-fuchsia-500 mb-1" size={24} />
-                </h1>
-                
-                <div className="mt-2 space-y-1">
-                    <p className="text-gray-300 text-sm max-w-lg line-clamp-2 italic">
-                        {userDescription}
-                    </p>
-                    
-                    <div className="flex flex-wrap items-center gap-4 text-gray-400 text-xs md:text-sm mt-2">
-                        <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
-                            <Calendar size={12} /> Gia nhập {joinDate}
-                        </span>
-                        <span className="text-gray-400 font-bold px-2 py-1 bg-white/5 rounded-md border border-white/10">
-                            New Player
-                        </span>
+            <div className="flex flex-col items-center justify-center w-full mb-6 shrink-0">
+                {/* Rank Circle Column */}
+                <div className="flex flex-col items-center">
+                    <div className="relative mb-4">
+                        <RankBadge mmr={profile?.mmr ?? null} size="xl" />
+                    </div>
+                    <h1 className="text-3xl font-bold text-white flex items-end gap-2 flex-wrap">
+                        <span>{displayName}</span>
+                        {fullName && fullName !== displayName && (
+                            <span className="text-xl font-medium text-gray-400 pb-0.5">({fullName})</span>
+                        )}
+                        <Medal className="text-fuchsia-500 mb-1" size={24} />
+                    </h1>
+                    <div className="mt-2 space-y-1 text-center">
+                        <p className="text-gray-300 text-sm max-w-lg line-clamp-2 italic">
+                            {userDescription}
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-4 text-gray-400 text-xs md:text-sm mt-2">
+                            <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
+                                <Users size={12} /> Gia nhập {joinDate}
+                            </span>
+                            <span style={{ color: rankInfo.color }} className="font-bold px-2 py-1 bg-white/5 rounded-md border border-white/10">
+                                {rankInfo.tier} {rankInfo.division}
+                            </span>
+                        </div>
                     </div>
                 </div>
-              </div>
+            </div>
 
-              {/* Actions */}
-              <div className="flex gap-3">
+            {/* Actions */}
+            <div className="flex gap-3 justify-center md:justify-end">
                 <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-white font-medium flex items-center gap-2 transition-colors">
                   <Share2 size={18} /> <span className="hidden sm:inline">Chia sẻ</span>
                 </button>
                 
                 {(!userIdFromQuery || (user && user.id === userIdFromQuery)) && (
-                   <Link to="/dashboard/settings">
+                  <Link to={`/dashboard/settings?userId=${profile?.id || user?.id}`}>
                     <button 
                       onClick={onEditProfile}
                       className="px-4 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl shadow-[0_0_15px_rgba(192,38,211,0.3)] flex items-center gap-2 transition-colors"
@@ -153,9 +160,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* --- CONTENT GRID --- */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pt-6">
         
         {/* LEFT COLUMN (Detailed Stats) */}
@@ -169,17 +174,18 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
             </h3>
             
             <div className="flex flex-col items-center justify-center py-4">
-              <div className="w-32 h-32 relative mb-4">
-                 <div className="absolute inset-0 flex items-center justify-center">
-                    <Bookmark size={64} className="text-fuchsia-400 drop-shadow-[0_0_15px_rgba(192,38,211,0.5)]" />
-                 </div>
-                 <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    <path className="text-neutral-800" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="2" />
-                    <path className="text-fuchsia-500" strokeDasharray="85, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="2" />
-                 </svg>
+              <RankBadge mmr={profile?.mmr ?? null} size="lg" />
+              <div className="text-2xl font-bold text-white uppercase tracking-wider mt-4">
+                {rankInfo.tier} {rankInfo.division}
               </div>
-              <div className="text-2xl font-bold text-white">Unranked</div>
-              <div className="text-sm text-gray-400">0 MMR</div>
+              <div className="text-sm font-black text-gray-400">
+                {rankInfo.mmr} <span className="text-[10px] opacity-50">MMR</span>
+              </div>
+              {rankInfo.nextMMR && (
+                <div className="mt-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                  Mốc tiếp theo: {rankInfo.nextMMR} MMR
+                </div>
+              )}
             </div>
           </div>
 
@@ -245,7 +251,14 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
 };
 
 
-const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }: any) => (
+interface MiniStatBoxProps {
+  label: string;
+  value: string;
+  icon: ElementType; // Lucide icon type
+  color?: string;
+}
+
+const MiniStatBox = ({ label, value, icon: Icon, color = "text-white" }: MiniStatBoxProps) => (
   <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 flex items-center gap-4 hover:border-white/20 transition-colors">
     <div className={`p-3 rounded-lg bg-white/5 ${color}`}>
       <Icon size={20} />

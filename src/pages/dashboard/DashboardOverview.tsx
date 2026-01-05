@@ -2,14 +2,39 @@ import { useState, useEffect } from 'react';
 import { Trophy, Swords, TrendingUp, Clock, Users, Bookmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
+import { supabase } from '../../lib/supabase';
+import RankBadge from '../../components/shared/RankBadge';
+
+interface Profile {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  mmr: number | null;
+}
 
 const DashboardOverview = () => {
   const [loading, setLoading] = useState(true);
+  const [topUsers, setTopUsers] = useState<Profile[]>([]);
 
   useEffect(() => {
-    // Simulate initial loading
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
+    const fetchData = async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, display_name, avatar_url, mmr')
+          .not('mmr', 'is', null) // Only users with MMR
+          .order('mmr', { ascending: false })
+          .limit(5);
+
+        if (data) setTopUsers(data);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
 
   if (loading) return <OverviewPageSkeleton />;
@@ -32,7 +57,7 @@ const DashboardOverview = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard icon={Trophy} label="Xếp hạng hiện tại" value="--" subValue="-- Server" color="text-yellow-400" gradient="from-yellow-500/20 to-orange-500/5" />
+        <StatCard icon={Bookmark} label="Xếp hạng hiện tại" value="--" subValue="-- Server" color="text-yellow-400" gradient="from-yellow-500/20 to-orange-500/5" />
         <StatCard icon={Swords} label="Tỉ lệ thắng" value="0%" subValue="-- tuần này" color="text-green-400" gradient="from-green-500/20 to-emerald-500/5" />
         <StatCard icon={TrendingUp} label="Tổng thu nhập" value="$0" subValue="-- hôm qua" color="text-fuchsia-400" gradient="from-fuchsia-500/20 to-purple-500/5" />
         <StatCard icon={Clock} label="Giờ chơi" value="0h" subValue="New Player" color="text-blue-400" gradient="from-blue-500/20 to-cyan-500/5" />
@@ -65,11 +90,18 @@ const DashboardOverview = () => {
               Bảng vàng Top 5
             </h3>
             <div className="space-y-4">
-              <LeaderboardRow rank={1} name="CyberNinja" level={74} score="2,840" isTop />
-              <LeaderboardRow rank={2} name="DragonSlayer" level={68} score="2,720" />
-              <LeaderboardRow rank={3} name="MysticQueen" level={62} score="2,590" />
-              <LeaderboardRow rank={4} name="ShadowHunter" level={59} score="2,450" />
-              <LeaderboardRow rank={5} name="IronViking" level={55} score="2,310" />
+              {topUsers.map((user, index) => (
+                <LeaderboardRow 
+                  key={user.id} 
+                  rank={index + 1} 
+                  name={user.display_name} 
+                  mmr={user.mmr} 
+                  isTop={index === 0} 
+                />
+              ))}
+              {topUsers.length === 0 && (
+                <div className="text-center py-4 text-gray-500 italic text-sm">Chưa có dữ liệu xếp hạng</div>
+              )}
             </div>
             <Link to="/dashboard/ranking">
             <button className="w-full mt-4 py-2 text-sm text-gray-400 border border-white/10 rounded hover:bg-white/5 hover:text-white transition-colors">
@@ -94,7 +126,7 @@ const DashboardOverview = () => {
   );
 };
 
-const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }: any) => (
+const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }: { icon: any, label: string, value: string, subValue: string, color: string, gradient: string }) => (
   <div className={`p-6 rounded-2xl bg-neutral-900/80 border border-white/5 relative overflow-hidden group hover:border-white/10 transition-all`}>
     <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${gradient} rounded-full blur-[40px] -mr-10 -mt-10 transition-opacity opacity-50 group-hover:opacity-100`}></div>
     <div className="relative z-10">
@@ -108,7 +140,7 @@ const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }: any) 
   </div>
 );
 
-const MatchRow = ({ mode, result, score, time, xp, date }: any) => (
+const MatchRow = ({ mode, result, score, time, xp, date }: { mode: string, result: string, score: string, time: string, xp: string, date: string }) => (
   <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 transition-colors group">
     <div className="flex items-center gap-4">
       <div className={`w-2 h-10 rounded-full ${result === 'Victory' ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -129,23 +161,25 @@ const MatchRow = ({ mode, result, score, time, xp, date }: any) => (
   </div>
 );
 
-const LeaderboardRow = ({ rank, name, level, score, isTop }: any) => (
+const LeaderboardRow = ({ rank, name, mmr, isTop }: { rank: number, name: string | null, mmr: number | null, isTop: boolean }) => (
   <div className={`flex items-center justify-between p-3 rounded-xl transition-colors ${isTop ? 'bg-yellow-500/10 border border-yellow-500/20' : 'hover:bg-white/5 border border-transparent'}`}>
     <div className="flex items-center gap-3">
       <span className={`w-6 text-center font-bold ${rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-gray-300' : rank === 3 ? 'text-amber-600' : 'text-gray-500'}`}>{rank}</span>
-      <div>
-        <div className="font-bold text-sm text-white">{name}</div>
-        <div className="text-[10px] text-gray-500">LVL {level}</div>
+      <div className="flex items-center gap-2">
+        <RankBadge mmr={mmr} size="sm" showProgress={false} />
+        <div>
+          <div className="font-bold text-sm text-white">{name || "Unknown"}</div>
+        </div>
       </div>
     </div>
     <div className="text-right">
-       <div className="text-sm font-bold text-white">{score}</div>
+       <div className="text-sm font-bold text-white">{mmr ?? 0}</div>
        <div className="text-[10px] text-gray-500 font-medium">MMR</div>
     </div>
   </div>
 );
 
-const FriendRow = ({ name, status, avatar }: any) => (
+const FriendRow = ({ name, status, avatar }: { name: string, status: string, avatar: string }) => (
   <div className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
     <div className="flex items-center gap-3">
       <div className="relative">

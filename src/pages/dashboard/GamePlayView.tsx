@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag } from 'lucide-react';
+import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag, Bookmark, Users, Swords, Clock, ChevronRight } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -9,12 +9,15 @@ import { fetchQuestions } from '../../lib/trivia';
 import type { ProcessedQuestion } from '../../lib/trivia';
 
 import { leaveRoom as leaveRoomUtil } from '../../lib/roomManager';
+import { calculateMMRChange, getRankFromMMR } from '../../lib/ranking';
+import RankBadge from '../../components/shared/RankBadge';
 
 interface Profile {
     display_name: string;
     avatar_url: string;
     level?: number;
     rank_name?: string;
+    mmr?: number | null;
 }
 
 interface Participant {
@@ -64,6 +67,9 @@ const GamePlayView = () => {
     const [showSetResults, setShowSetResults] = useState(false);
     const [isMatchEnding, setIsMatchEnding] = useState(false);
     const [isNavigatingAway, setIsNavigatingAway] = useState(false);
+    const [showMMRSummary, setShowMMRSummary] = useState(false);
+    const [mmrChange, setMmrChange] = useState<number>(0);
+    const [userNewMMR, setUserNewMMR] = useState<number | null>(null);
     const mountTimeRef = useRef(0);
     const channelRef = useRef<RealtimeChannel | null>(null);
 
@@ -120,11 +126,12 @@ const GamePlayView = () => {
 
                     // Fetch Room data if exists
                     if (roomId) {
+                        console.log("Fetching room data for ID:", roomId);
                         const { data: roomData, error: roomError } = await supabase
                             .from('rooms')
                             .select('*')
                             .eq('id', roomId)
-                            .single();
+                            .maybeSingle();
                         
                         if (roomData) {
                             if (roomData.settings) {
@@ -144,8 +151,13 @@ const GamePlayView = () => {
                             // Get Opponent info
                             const opp = roomData.participants?.find((p: Participant) => p.id !== user.id);
                             if (opp) setOpponent(opp);
+                        } else if (!roomError) {
+                            console.warn("Room not found in database for ID:", roomId);
                         }
-                        if (roomError) console.error("Error fetching room settings:", roomError);
+                        
+                        if (roomError) {
+                            console.error("Error fetching room settings:", roomError.message, roomError);
+                        }
                     } else if (!isRanked && !isBlitzmatch) {
                         // For solo testing / old matchmaking fallback if no roomId
                         const r1 = await fetchQuestions(10, 'easy', user.id);
@@ -987,16 +999,63 @@ const GamePlayView = () => {
                          </div>
                     </div>
 
-                    <button 
-                        onClick={async () => {
-                            setIsNavigatingAway(true);
-                            await leaveRoom();
-                            navigate('/dashboard/arena');
-                        }}
-                        className="relative px-12 py-5 rounded-[25px] bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.3)]"
-                    >
-                        Quay lại Arena
-                    </button>
+                    {isRanked && showMMRSummary ? (
+                        <div className="absolute inset-0 z-[120] bg-neutral-950 flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
+                             {/* Background Glows */}
+                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-fuchsia-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+                             <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-[300px] h-[300px] bg-purple-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none"></div>
+                             <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[300px] h-[300px] bg-blue-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none" style={{ animationDelay: '1s' }}></div>
+
+                             <MMRSummaryOverlay 
+                                mmr={userNewMMR} 
+                                change={mmrChange} 
+                                avatarUrl={profile?.avatar_url || undefined}
+                                onDone={async () => {
+                                    setIsNavigatingAway(true);
+                                    await leaveRoom();
+                                    navigate('/dashboard/arena');
+                                }}
+                             />
+                        </div>
+                    ) : (
+                        <button 
+                            onClick={async () => {
+                                if (isRanked) {
+                                    // 1. Calculate & Save MMR if not already done
+                                    if (userId && profile) {
+                                        const isWin = setScores.user > setScores.opponent;
+                                        const isDraw = setScores.user === setScores.opponent;
+                                        if (!isDraw) {
+                                            const currentMMR = profile.mmr ?? null;
+                                            const calculatedNewMMR = calculateMMRChange(currentMMR, isWin);
+                                            const change = calculatedNewMMR - (currentMMR || 0);
+                                            
+                                            setMmrChange(change);
+                                            setUserNewMMR(calculatedNewMMR);
+
+                                            await supabase
+                                                .from('profiles')
+                                                .update({ mmr: calculatedNewMMR })
+                                                .eq('id', userId);
+                                        } else {
+                                            setMmrChange(0);
+                                            setUserNewMMR(profile.mmr ?? 0);
+                                        }
+                                    }
+                                    // 2. Show Summary Screen
+                                    setShowMMRSummary(true);
+                                    return;
+                                }
+
+                                setIsNavigatingAway(true);
+                                await leaveRoom();
+                                navigate('/dashboard/arena');
+                            }}
+                            className="relative px-12 py-5 rounded-[25px] bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.3)] z-[75]"
+                        >
+                            {isRanked ? 'Tiếp theo' : 'Quay lại Arena'}
+                        </button>
+                    )}
                 </div>
             )}
             {/* Round Intro Overlay (Black Screen) */}
@@ -1069,6 +1128,86 @@ const GamePlayView = () => {
                     </div>
                 </div>
             )}
+        </div>
+    );
+};
+
+const MMRSummaryOverlay = ({ mmr, change, onDone, avatarUrl }: { mmr: number | null, change: number, onDone: () => void, avatarUrl?: string }) => {
+    const rank = getRankFromMMR(mmr);
+    
+    return (
+        <div className="relative flex flex-col items-center text-center max-w-4xl w-full px-4 z-10 animate-in fade-in slide-in-from-bottom-10 duration-700 h-full max-h-screen overflow-y-auto py-8 no-scrollbar">
+            <h2 className="text-[10px] md:text-sm font-black text-gray-500 uppercase tracking-[0.5em] mb-6 shrink-0">Chi tiết hạng</h2>
+            
+            <div className="flex flex-col items-center justify-center w-full mb-6 shrink-0">
+                {/* Rank Circle Column */}
+                <div className="flex flex-col items-center">
+                    <div className="relative mb-4">
+                        <RankBadge mmr={mmr} size="xl" />
+                        
+                        {change !== 0 && (
+                            <div className={`absolute top-0 -right-2 px-3 py-1.5 rounded-xl font-black text-base shadow-2xl border-2 animate-in slide-in-from-left-4 duration-500 delay-700 fill-mode-both flex items-center gap-1 ${
+                                change > 0 ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'bg-red-500/20 border-red-500/30 text-red-400'
+                            }`}>
+                                {change > 0 ? `+${change}` : change}
+                            </div>
+                        )}
+                    </div>
+
+                    <h3 className="text-3xl md:text-4xl font-black text-white uppercase italic tracking-tighter mb-2 italic drop-shadow-2xl">
+                        {rank.tier} {rank.division}
+                    </h3>
+                    
+                    <div className="bg-red-500/10 border-2 border-red-500/30 px-5 py-1.5 rounded-xl animate-in zoom-in-75 duration-500 delay-300 fill-mode-both">
+                        <span className="text-xl font-black text-white italic tracking-tighter">
+                            {mmr} <span className="text-[10px] opacity-40 font-black uppercase tracking-widest text-gray-400 ml-1">MMR</span>
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom Section: Progress Bar and Avatar Button in a row */}
+            <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-4xl bg-white/5 border border-white/10 rounded-[30px] p-6 backdrop-blur-md shrink-0 mb-4">
+                {/* Progress Bar Side */}
+                <div className="flex-1 w-full space-y-3">
+                    <div className="flex justify-between items-center text-[9px] md:text-xs font-black uppercase tracking-[0.2em] text-gray-500">
+                        <span className="text-blue-400">Tiến trình thăng hạng</span>
+                        <span className="text-white/40">{rank.nextMMR && (rank.nextMMR - (mmr || 0))} MMR CÒN LẠI</span>
+                    </div>
+                    <div className="h-3 w-full bg-white/10 rounded-full overflow-hidden p-[2px]">
+                        <div 
+                            className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-[2s] delay-500 ease-out shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
+                            style={{ width: `${rank.progress}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest text-left opacity-60">Tiếp tục hành trình để đạt mốc rank cao hơn</p>
+                </div>
+
+                {/* Vertical Divider for desktop */}
+                <div className="hidden md:block w-px h-20 bg-white/10"></div>
+
+                {/* Avatar Exit Button - Reduced size to match lower profile */}
+                <div className="flex flex-col items-center gap-3">
+                    <button 
+                        onClick={onDone}
+                        className="group relative w-32 h-32 md:w-36 md:h-36 shrink-0 rounded-full p-1.5 bg-neutral-950 border-4 border-white/10 hover:border-fuchsia-500 transition-all duration-500 active:scale-95 shadow-2xl"
+                    >
+                        <div className="w-full h-full rounded-full overflow-hidden relative border border-white/5">
+                            <img 
+                                src={avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} 
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                                alt="Exit" 
+                            />
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                <LogOut size={20} className="text-white mb-1" />
+                                <div className="text-[10px] font-black text-white uppercase tracking-[0.1em]">QUAY LẠI</div>
+                            </div>
+                        </div>
+                        <div className="absolute inset-0 rounded-full bg-fuchsia-500/10 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    </button>
+                    <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.3em] animate-pulse">Bấm Avatar để tiếp tục</p>
+                </div>
+            </div>
         </div>
     );
 };

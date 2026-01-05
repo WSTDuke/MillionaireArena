@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 import { Swords, Trophy, Users, Zap, Star, Play, Lock, Bookmark, X, Loader2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
+import { getRankFromMMR } from '../../lib/ranking';
 
 interface Participant {
     id: string;
@@ -28,13 +29,43 @@ interface RoomData {
 const ArenaView = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-
-  const handleStartMode = (mode: string) => {
-    navigate(`/dashboard/arena/lobby?mode=${mode}`);
-  };
-
+  const [profile, setProfile] = useState<any>(null);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [roomsList, setRoomsList] = useState<RoomData[]>([]);
+  const [joinCode, setJoinCode] = useState("");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [roomSettings, setRoomSettings] = useState({
+      name: "",
+      max_rounds: 3,
+      questions: 10
+  });
+  const [creating, setCreating] = useState(false);
+  const [alertModal, setAlertModal] = useState<{
+      show: boolean;
+      title: string;
+      message: string;
+      type: 'error' | 'warning' | 'info';
+  }>({
+      show: false,
+      title: "",
+      message: "",
+      type: 'info'
+  });
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('mmr')
+          .eq('id', user.id)
+          .single();
+        if (data) setProfile(data);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 500);
@@ -87,25 +118,9 @@ const ArenaView = () => {
     };
   }, []);
 
-  const [joinCode, setJoinCode] = useState("");
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [roomSettings, setRoomSettings] = useState({
-      name: "",
-      max_rounds: 3,
-      questions: 10
-  });
-  const [creating, setCreating] = useState(false);
-  const [alertModal, setAlertModal] = useState<{
-      show: boolean;
-      title: string;
-      message: string;
-      type: 'error' | 'warning' | 'info';
-  }>({
-      show: false,
-      title: "",
-      message: "",
-      type: 'info'
-  });
+  const handleStartMode = (mode: string) => {
+    navigate(`/dashboard/arena/lobby?mode=${mode}`);
+  };
 
   // Open Modal
   const handleOpenCreateModal = async () => {
@@ -129,14 +144,14 @@ const ArenaView = () => {
         const roomCode = Math.floor(100000 + Math.random() * 900000).toString();
 
         // Fetch latest profile for correct avatar/name
-        const { data: profile } = await supabase
+        const { data: profileData } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', user.id)
             .single();
 
-        const hostDisplay = profile?.display_name || user.user_metadata?.full_name || 'Host';
-        const hostAvatar = profile?.avatar_url || user.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + user.id;
+        const hostDisplay = profileData?.display_name || user.user_metadata?.full_name || 'Host';
+        const hostAvatar = profileData?.avatar_url || user.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + user.id;
 
         const { data, error } = await supabase
             .from('rooms')
@@ -158,8 +173,8 @@ const ArenaView = () => {
                         avatar_url: hostAvatar,
                         is_ready: true,
                         is_host: true,
-                        level: profile?.level || 1,
-                        rank: profile?.rank_name || 'Bronze I'
+                        level: profileData?.level || 1,
+                        rank: profileData?.rank_name || 'Bronze I'
                     }
                 ],
                 current_players: 1
@@ -232,6 +247,8 @@ const ArenaView = () => {
           });
       }
   };
+
+  const rankInfo = getRankFromMMR(profile?.mmr ?? null);
 
   if (loading) return <ArenaPageSkeleton />;
 
@@ -506,41 +523,48 @@ const ArenaView = () => {
              </div>
              <h3 className="text-xl font-bold text-white mb-4">Mùa giải 12</h3>
              <div className="flex items-center gap-4 mb-6">
-               <div className="w-16 h-16 rounded-full bg-yellow-500/20 border border-yellow-500/50 flex items-center justify-center">
-                 <Bookmark className="text-yellow-500" size={32} />
+               <div className="p-0.5 rounded-full bg-gradient-to-br from-white/10 to-white/0 border border-white/5">
+                 <div className="w-16 h-16 rounded-full flex items-center justify-center relative bg-neutral-900/50">
+                   <Bookmark size={32} style={{ color: rankInfo.color }} className="drop-shadow-[0_0_10px_rgba(0,0,0,0.5)]" />
+                   {rankInfo.division && (
+                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[60%] flex flex-col gap-0.5">
+                        {Array.from({ length: rankInfo.division === 'III' ? 3 : (rankInfo.division === 'II' ? 2 : 1) }).map((_, i) => (
+                          <div key={i} className="w-4 h-[1.5px] rounded-full" style={{ backgroundColor: rankInfo.color }} />
+                        ))}
+                     </div>
+                   )}
+                 </div>
                </div>
                <div>
-                  <div className="text-2xl font-bold text-white">Unranked</div>
-                  <div className="text-sm text-gray-400">Chưa bắt đầu</div>
+                  <div className="text-2xl font-bold text-white uppercase tracking-tight" style={{ color: rankInfo.color }}>
+                    {rankInfo.tier === 'Unranked' ? 'Chưa hạng' : `${rankInfo.tier} ${rankInfo.division}`}
+                  </div>
+                  <div className="text-sm text-gray-400 font-bold">{profile?.mmr ?? 0} MMR</div>
                </div>
              </div>
              
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Thắng</span>
-                  <span className="text-green-400 font-bold">0</span>
+                  <span className="text-gray-400 font-bold">Thứ hạng</span>
+                  <span className="text-white font-black">#--</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Thua</span>
-                  <span className="text-red-400 font-bold">0</span>
+                  <span className="text-gray-400 font-bold">Thắng/Thua</span>
+                  <span className="text-white font-black">0/0</span>
                 </div>
-                <div className="w-full bg-black h-2 rounded-full overflow-hidden mt-2">
-                  <div className="bg-fuchsia-500 h-full w-[0%]"></div>
+                <div className="w-full bg-black/40 h-2.5 rounded-full overflow-hidden mt-2 border border-white/5 p-[1px]">
+                  <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${rankInfo.progress}%`, backgroundColor: rankInfo.color, boxShadow: `0 0 10px ${rankInfo.color}80` }}></div>
                 </div>
-                <div className="text-center text-xs text-gray-500 mt-1">Tỉ lệ thắng: 0%</div>
+                <div className="text-center text-[10px] text-gray-500 mt-1 font-black uppercase tracking-widest">Tiến trình Rank: {rankInfo.progress}%</div>
               </div>
              
              <Link to="/dashboard/ranking">
-             <button className="w-full mt-6 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl transition-colors shadow-lg shadow-fuchsia-900/20">
-               Xem bảng xếp hạng
+             <button className="w-full mt-6 py-4 bg-white/5 hover:bg-white/10 border border-white/5 text-white text-sm font-black uppercase tracking-widest rounded-2xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2">
+               <Trophy size={18} className="text-yellow-500" /> Bảng vinh danh
              </button></Link>
           </div>
         </div>
-
       </div>
-
-
-
     </div>
   );
 };

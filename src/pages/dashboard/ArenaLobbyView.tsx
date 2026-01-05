@@ -121,7 +121,7 @@ const ArenaLobbyView = () => {
             .from('rooms')
             .select('*')
             .eq('id', roomId)
-            .single();
+            .maybeSingle();
 
         if (data) {
             setRoomData(data);
@@ -168,7 +168,7 @@ const ArenaLobbyView = () => {
                             .from('rooms')
                             .select('*')
                             .eq('id', roomId)
-                            .single();
+                            .maybeSingle();
                             
                         if (freshRoom) {
                             setParticipants(freshRoom.participants || []);

@@ -1,12 +1,7 @@
 import React, { useState } from "react";
-import {
-  useNavigate,
-  NavLink,
-  Outlet,
-  useLocation,
-  Link,
-} from "react-router-dom";
+import { useNavigate, NavLink, Outlet, useLocation, Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { getRankFromMMR } from "../../lib/ranking";
 import {
   LayoutDashboard,
   Trophy,
@@ -283,11 +278,11 @@ const UserProfileDropup = ({
         <div className="flex-1 overflow-hidden">
           <h4 className="text-sm font-bold truncate">{displayName}</h4>
           <div className="flex items-center gap-2">
-            <p className="text-xs text-gray-400 font-medium">Hạng: --</p>
-            <div className="w-1 h-1 rounded-full bg-white/10" />
-            <p className="text-xs text-yellow-500 font-black flex items-center gap-1">
-              {profile?.gold?.toLocaleString() || 0} <span className="text-[10px] opacity-70">Vàng</span>
+            <p className="text-xs font-medium" style={{ color: getRankFromMMR(profile?.mmr ?? null).color }}>
+              Hạng: {getRankFromMMR(profile?.mmr ?? null).tier} {getRankFromMMR(profile?.mmr ?? null).division}
             </p>
+            <div className="w-1 h-1 rounded-full bg-white/10" />
+           
           </div>
         </div>
         <div className="text-gray-500">
