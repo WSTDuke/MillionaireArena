@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useOutletContext } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { Search, Crown, Bookmark } from "lucide-react";
 import { RankingPageSkeleton } from "../../components/LoadingSkeletons";
@@ -17,12 +18,13 @@ interface ProfileData {
 }
 
 const RankingView = () => {
-  const [leaderboard, setLeaderboard] = useState<ProfileData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { dashboardCache, setDashboardCache } = useOutletContext<any>();
+  const [leaderboard, setLeaderboard] = useState<ProfileData[]>(dashboardCache.rankingData || []);
+  const [loading, setLoading] = useState(!dashboardCache.rankingData);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    const fetchLeaderboard = async () => {
+    const fetchData = async () => {
       try {
         const { data, error } = await supabase
           .from("profiles")
@@ -43,6 +45,7 @@ const RankingView = () => {
         });
 
         setLeaderboard(enrichedData);
+        setDashboardCache((prev: any) => ({ ...prev, rankingData: enrichedData }));
       } catch (error) {
         console.error("Error fetching leaderboard:", error);
       } finally {
@@ -50,8 +53,8 @@ const RankingView = () => {
       }
     };
 
-    fetchLeaderboard();
-  }, []);
+    fetchData();
+  }, [setDashboardCache]);
 
   const filteredLeaderboard = leaderboard.filter((user) => {
     const name = user.display_name || user.full_name || "User";

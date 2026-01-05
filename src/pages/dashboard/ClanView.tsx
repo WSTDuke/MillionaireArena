@@ -48,30 +48,33 @@ interface MemberInfo {
   }
 }
 
+
 const ClanView = () => {
-  const { user } = useOutletContext<{ 
-    user: { id: string }; 
+  const { user, dashboardCache, setDashboardCache } = useOutletContext<{
+    user: { id: string };
+    dashboardCache: any;
+    setDashboardCache: React.Dispatch<React.SetStateAction<any>>;
   }>();
 
-  const [activeTab, setActiveTab] = useState('find-clan'); 
+  const [activeTab, setActiveTab] = useState('find-clan');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showKickConfirm, setShowKickConfirm] = useState(false);
   const [showPromoteConfirm, setShowPromoteConfirm] = useState(false);
   const [targetMember, setTargetMember] = useState<MemberInfo | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [clanInfo, setClanInfo] = useState<ClanInfo | null>(null);
-  const [members, setMembers] = useState<MemberInfo[]>([]);
-  const [joinRequests, setJoinRequests] = useState<MemberInfo[]>([]);
-  const [userClanStatus, setUserClanStatus] = useState<{ [clanId: string]: 'pending' | 'member' }>({});
-  const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>([]);
+  const [loading, setLoading] = useState(!dashboardCache.recommendedClans);
+  const [clanInfo, setClanInfo] = useState<ClanInfo | null>(dashboardCache.clanInfo || null);
+  const [members, setMembers] = useState<MemberInfo[]>(dashboardCache.members || []);
+  const [joinRequests, setJoinRequests] = useState<MemberInfo[]>(dashboardCache.joinRequests || []);
+  const [userClanStatus, setUserClanStatus] = useState<{ [clanId: string]: 'pending' | 'member' }>(dashboardCache.userClanStatus || {});
+  const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>(dashboardCache.recommendedClans || []);
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null);
-  
+
   // Ref to track user's primary clan membership for joined/kicked notifications
   const prevClanIdRef = React.useRef<string | null>(null);
   const isInitialStatusRef = React.useRef(true);
-  
+
   // New state for viewing other clans
   const [viewingClan, setViewingClan] = useState<ClanInfo | null>(null);
   const [viewingMembers, setViewingMembers] = useState<MemberInfo[]>([]);
@@ -88,7 +91,7 @@ const ClanView = () => {
       .eq('clan_id', clanId)
       .in('status', ['approved', 'pending'])
       .order('role', { ascending: true });
-    
+
     if (rawError) {
       console.error('Members fetch error:', rawError);
       return [];
@@ -98,7 +101,7 @@ const ClanView = () => {
         .from('profiles')
         .select('id, display_name, avatar_url, full_name, mmr')
         .in('id', userIds);
-      
+
       if (profError) {
         console.error('Profiles fetch error:', profError);
         return rawMembers.map(m => ({
@@ -120,20 +123,22 @@ const ClanView = () => {
     if (!user?.id) return;
     if (isInitialLoad) setLoading(true);
     console.log('Fetching clan data for user:', user.id);
-  
+
     let clanIdForSubscription: string | null = null;
-  
+    // Note: clanIdForSubscription is used for real-time updates which might be added later
+    void clanIdForSubscription; // Avoid unused warning if not using in simple version
+
     try {
       // First, check for any pending requests by the user
       const { data: pendingRequests, error: pendingError } = await supabase
         .from('clan_members')
-        .select('clan_id, status')
+        .select('clan_id, status, role')
         .eq('user_id', user.id);
   
       if (pendingError) throw pendingError;
   
       const statusMap: { [clanId: string]: 'pending' | 'member' } = {};
-      let approvedClanMembership = null;
+      let approvedClanMembership: { clan_id: string, status: string, role: string } | null = null;
   
       if (pendingRequests) {
         for (const req of pendingRequests) {
@@ -150,43 +155,70 @@ const ClanView = () => {
       if (approvedClanMembership) {
         const { data: clanDetails, error: clanError } = await supabase
           .from('clans')
-          .select('id, name, tag, description, icon, color, level, members_count')
-          .eq('id', (approvedClanMembership as any).clan_id)
+          .select('*')
+          .eq('id', approvedClanMembership.clan_id)
           .single();
   
         if (clanError) throw clanError;
   
-        const { data: memberDetails, error: memberError } = await supabase
-          .from('clan_members')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('clan_id', (approvedClanMembership as any).clan_id)
-          .single();
-        if (memberError) throw memberError;
-  
-        clanIdForSubscription = clanDetails.id;
-        const allMembers = await fetchMembers(clanDetails.id);
-        const approvedMembers = allMembers.filter(m => m.status === 'approved');
-        const requests = allMembers.filter(m => m.status === 'pending');
+        setClanInfo({ ...clanDetails, role: approvedClanMembership.role });
         
-        setMembers(approvedMembers);
-        setJoinRequests(requests);
-        setClanInfo({
-          ...clanDetails,
-          members_count: approvedMembers.length,
-          role: memberDetails.role
-        });
-        setActiveTab('my-clan');
+        const membersData = await fetchMembers(clanDetails.id);
+        setMembers(membersData);
+  
+        // Fix 400 error by fetching requests and profiles separately
+        const { data: rawRequests, error: requestsError } = await supabase
+          .from('clan_members')
+          .select('user_id, role, joined_at, status')
+          .eq('clan_id', clanDetails.id)
+          .eq('status', 'pending');
+  
+        if (!requestsError && rawRequests) {
+          const userIds = rawRequests.map(m => m.user_id);
+          const { data: profiles, error: profError } = await supabase
+            .from('profiles')
+            .select('id, display_name, avatar_url, full_name, mmr')
+            .in('id', userIds);
+          
+          const enrichedRequests = rawRequests.map(r => ({
+            ...r,
+            profiles: (profiles || []).find(p => p.id === r.user_id) || {
+              display_name: null,
+              avatar_url: null,
+              full_name: null,
+              mmr: null
+            }
+          }));
+          setJoinRequests(enrichedRequests as MemberInfo[]);
+          
+          setActiveTab('my-clan');
+          // Final cache sync for my clan
+          setDashboardCache((prev: any) => ({
+            ...prev,
+            clanInfo: { ...clanDetails, role: approvedClanMembership.role },
+            members: membersData,
+            joinRequests: enrichedRequests,
+            userClanStatus: statusMap
+          }));
+        }
   
       } else {
         setClanInfo(null);
         setMembers([]);
         setJoinRequests([]);
         setActiveTab('find-clan');
+        
+        // Update cache for no clan
+        setDashboardCache((prev: any) => ({
+          ...prev,
+          clanInfo: null,
+          members: [],
+          joinRequests: [],
+          userClanStatus: statusMap
+        }));
       }
     } catch (err: any) {
       console.error('Error fetching clan data:', err);
-      handleShowToast('Lỗi khi tải thông tin Clan: ' + err.message, 'error');
     } finally {
       if (isInitialLoad) {
         try {
@@ -195,16 +227,24 @@ const ClanView = () => {
             .select('*')
             .order('members_count', { ascending: false })
             .limit(10);
+  
           if (clansError) throw clansError;
           setRecommendedClans(clans || []);
+          
+          // Update cache for recommended clans
+          setDashboardCache((prev: any) => ({
+            ...prev,
+            recommendedClans: clans || []
+          }));
         } catch (err: any) {
           console.error('Error fetching recommended clans:', err);
         }
-        setLoading(false);
       }
+      setLoading(false); // Ensure loading is set to false after initial load
       return clanIdForSubscription;
     }
-  }, [user?.id, fetchMembers]);
+  }, [user?.id, fetchMembers, setDashboardCache]);
+
 
   const handleViewClanDetails = async (clanId: string) => {
     setViewingLoading(true);
@@ -627,6 +667,7 @@ setShowPromoteConfirm(true);
           onJoinClan={handleRequestToJoinClan}
           onCancelRequest={handleCancelRequest}
           onViewDetails={handleViewClanDetails}
+          hasClan={!!clanInfo}
         />
       )}
 
@@ -964,7 +1005,7 @@ const MemberRow = ({
         {showMenu && (
           <>
             <div className="fixed inset-0 z-[100]" onClick={() => setShowMenu(false)} />
-            <div className="absolute right-4 top-14 w-52 bg-neutral-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+            <div className="absolute left-full bottom-0 w-56 bg-neutral-900 border border-white/10 rounded-2xl p-2 shadow-2xl z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
               <button 
                 onClick={() => { setShowMenu(false); navigate(`/dashboard/profile?id=${member.user_id}`); }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all"
@@ -1042,8 +1083,7 @@ const RequestRow = ({
     );
 };
 
-const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest, onViewDetails }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void, onViewDetails: (id: string) => void }) => {
-    const hasClan = Object.values(userClanStatus).includes('member');
+const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest, onViewDetails, hasClan }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void, onViewDetails: (id: string) => void, hasClan: boolean }) => {
     return (
         <div className="space-y-6">
              {/* Search Bar */}

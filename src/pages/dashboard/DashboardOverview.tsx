@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Trophy, Swords, TrendingUp, Clock, Users, Bookmark } from 'lucide-react';
+import { useOutletContext } from 'react-router-dom';
+import { Swords, TrendingUp, Clock, Users, Bookmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
 import { supabase } from '../../lib/supabase';
@@ -13,8 +14,9 @@ interface Profile {
 }
 
 const DashboardOverview = () => {
-  const [loading, setLoading] = useState(true);
-  const [topUsers, setTopUsers] = useState<Profile[]>([]);
+  const { dashboardCache, setDashboardCache } = useOutletContext<any>();
+  const [loading, setLoading] = useState(!dashboardCache.overviewTopUsers);
+  const [topUsers, setTopUsers] = useState<Profile[]>(dashboardCache.overviewTopUsers || []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -26,7 +28,10 @@ const DashboardOverview = () => {
           .order('mmr', { ascending: false })
           .limit(5);
 
-        if (data) setTopUsers(data);
+        if (data) {
+          setTopUsers(data);
+          setDashboardCache((prev: any) => ({ ...prev, overviewTopUsers: data }));
+        }
         setLoading(false);
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -35,7 +40,7 @@ const DashboardOverview = () => {
     };
 
     fetchData();
-  }, []);
+  }, [setDashboardCache]);
 
   if (loading) return <OverviewPageSkeleton />;
 

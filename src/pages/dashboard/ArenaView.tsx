@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useOutletContext, Link, useNavigate } from 'react-router-dom';
 import { supabase } from "../../lib/supabase";
 import { Swords, Trophy, Users, Zap, Star, Play, Lock, Bookmark, X, Loader2 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
 import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
 import { getRankFromMMR } from '../../lib/ranking';
 
@@ -28,10 +28,11 @@ interface RoomData {
 
 const ArenaView = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
-  const [loadingRooms, setLoadingRooms] = useState(true);
-  const [roomsList, setRoomsList] = useState<RoomData[]>([]);
+  const { dashboardCache, setDashboardCache } = useOutletContext<any>();
+  const [loading, setLoading] = useState(!dashboardCache.arenaRooms || !dashboardCache.arenaProfile);
+  const [profile, setProfile] = useState<any>(dashboardCache.arenaProfile || null);
+  const [loadingRooms, setLoadingRooms] = useState(!dashboardCache.arenaRooms);
+  const [roomsList, setRoomsList] = useState<RoomData[]>(dashboardCache.arenaRooms || []);
   const [joinCode, setJoinCode] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [roomSettings, setRoomSettings] = useState({
@@ -61,11 +62,14 @@ const ArenaView = () => {
           .select('mmr')
           .eq('id', user.id)
           .single();
-        if (data) setProfile(data);
+        if (data) {
+          setProfile(data);
+          setDashboardCache((prev: any) => ({ ...prev, arenaProfile: data }));
+        }
       }
     };
     fetchProfile();
-  }, []);
+  }, [setDashboardCache]);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 500);
@@ -80,7 +84,10 @@ const ArenaView = () => {
             .eq('status', 'waiting')
             .order('created_at', { ascending: false });
         
-        if (data) setRoomsList(data as RoomData[]);
+        if (data) {
+            setRoomsList(data as RoomData[]);
+            setDashboardCache((prev: any) => ({ ...prev, arenaRooms: data }));
+        }
         if (error) console.error("Error fetching rooms:", error);
         setLoadingRooms(false);
     };

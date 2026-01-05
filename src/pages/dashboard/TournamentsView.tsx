@@ -1,18 +1,25 @@
 import { useState, useRef, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { Trophy, Calendar, Users, DollarSign, Filter, Search, ArrowRight } from 'lucide-react';
 import { TournamentsPageSkeleton } from '../../components/LoadingSkeletons';
 
 const TournamentsView = () => {
+  const { dashboardCache, setDashboardCache } = useOutletContext<any>();
   const [filter, setFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!dashboardCache.tournamentsLoaded);
   
   // 2. Khởi tạo Ref để đánh dấu vị trí muốn trượt tới
   const tabsSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
+    if (!dashboardCache.tournamentsLoaded) {
+      const timer = setTimeout(() => {
+        setLoading(false);
+        setDashboardCache((prev: any) => ({ ...prev, tournamentsLoaded: true }));
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [dashboardCache.tournamentsLoaded, setDashboardCache]);
 
   // 3. Hàm xử lý hiệu ứng trượt
   const handleScrollToTabs = () => {

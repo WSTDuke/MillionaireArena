@@ -20,6 +20,7 @@ const DashboardPage = () => {
   const location = useLocation();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [dashboardCache, setDashboardCache] = useState<Record<string, any>>({});
 
   React.useEffect(() => {
     const getData = async () => {
@@ -162,7 +163,7 @@ const DashboardPage = () => {
 
         {/* Dashboard Content Scrollable */}
         <div className="p-8 h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar pb-20">
-          <Outlet context={{ user, profile, setProfile }} />
+          <Outlet context={{ user, profile, setProfile, dashboardCache, setDashboardCache }} />
         </div>
       </main>
     </div>
@@ -282,7 +283,6 @@ const UserProfileDropup = ({
               Hạng: {getRankFromMMR(profile?.mmr ?? null).tier} {getRankFromMMR(profile?.mmr ?? null).division}
             </p>
             <div className="w-1 h-1 rounded-full bg-white/10" />
-           
           </div>
         </div>
         <div className="text-gray-500">
