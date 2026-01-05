@@ -11,6 +11,7 @@ import TournamentsView from "../pages/dashboard/TournamentsView"
 import ClanView from "../pages/dashboard/ClanView"
 import Home from "../pages/home/HomePage"
 import RankingView from "../pages/dashboard/RankingView"
+import PaymentView from "../pages/dashboard/PaymentView"
 import { ProtectedRoute, GuestRoute } from "../components/auth/AuthGuard"
 
 export const routes = [
@@ -77,6 +78,10 @@ export const routes = [
       {
         path: "ranking", 
         element: RankingView,
+      },
+      {
+        path: "payment",
+        element: PaymentView,
       }
     ]
   },

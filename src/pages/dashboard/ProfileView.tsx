@@ -165,7 +165,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
           <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6 relative overflow-hidden backdrop-blur-sm">
             <div className="absolute top-0 right-0 w-48 h-48 bg-fuchsia-600/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
             <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-white">
-              <Trophy className="text-yellow-500" size={20} /> Xếp hạng (Rank)
+              <Bookmark className="text-yellow-500" size={20} /> Xếp hạng (Rank)
             </h3>
             
             <div className="flex flex-col items-center justify-center py-4">

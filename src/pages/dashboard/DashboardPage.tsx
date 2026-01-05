@@ -12,12 +12,12 @@ import {
   Trophy,
   Swords,
   Settings,
-  Bell,
   Search,
   LogOut,
   Users,
   ChevronRight,
   Bookmark,
+  Plus,
 } from "lucide-react";
 
 const DashboardPage = () => {
@@ -146,10 +146,21 @@ const DashboardPage = () => {
               />
             </div>
 
-            {/* Notifications */}
-            <div className="relative cursor-pointer hover:text-fuchsia-400 transition-colors">
-              <Bell size={20} />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-black"></span>
+            {/* Gold Balance & Add button */}
+            <div className="flex items-center gap-3 bg-neutral-900/50 border border-white/5 rounded-full px-4 py-1.5 hover:border-white/10 transition-all select-none">
+              <div className="flex items-center gap-2">
+                <span className="text-lg leading-none">🪙</span>
+                <span className="text-sm font-black text-yellow-500">
+                  {profile?.gold?.toLocaleString() || 0}
+                </span>
+              </div>
+              <button 
+                onClick={() => navigate("/dashboard/payment")}
+                className="w-6 h-6 flex items-center justify-center rounded-full bg-fuchsia-600/20 hover:bg-fuchsia-600 text-fuchsia-400 hover:text-white transition-all border border-fuchsia-500/30"
+                title="Nạp vàng"
+              >
+                <Plus size={14} strokeWidth={3} />
+              </button>
             </div>
           </div>
         </header>

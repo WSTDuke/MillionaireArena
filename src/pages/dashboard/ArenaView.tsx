@@ -502,7 +502,7 @@ const ArenaView = () => {
         <div className="space-y-6">
           <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-2xl p-6 relative overflow-hidden">
              <div className="absolute top-0 right-0 p-4 opacity-10">
-               <Trophy size={100} />
+               <Bookmark size={100} />
              </div>
              <h3 className="text-xl font-bold text-white mb-4">Mùa giải 12</h3>
              <div className="flex items-center gap-4 mb-6">
