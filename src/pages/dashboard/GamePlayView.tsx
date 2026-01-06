@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag, Bookmark, Users, Swords, Clock, ChevronRight } from 'lucide-react';
+import { Trophy, HelpCircle, Zap, Shield, LogOut, Loader2, Flag } from 'lucide-react';
 
 import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -54,15 +54,16 @@ const GamePlayView = () => {
 
     // New Quiz States
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-    const [userScore, setUserScore] = useState(10);
-    const [opponentScore, setOpponentScore] = useState(10);
+    const [userScore, setUserScore] = useState(0);
+    const [opponentScore, setOpponentScore] = useState(0);
     const [showTransition, setShowTransition] = useState(false);
     const [roundPoints, setRoundPoints] = useState({ user: 0, opponent: 0 });
     const [isGameOver, setIsGameOver] = useState(false);
 
     // Cinematic & Set Scoring States
     const [setScores, setSetScores] = useState<{ user: number; opponent: number }>({ user: 0, opponent: 0 });
-    const [roundPointsHistory, setRoundPointsHistory] = useState<{ user: number; opponent: number }>({ user: 10, opponent: 10 });
+    const [roundPointsHistory, setRoundPointsHistory] = useState<{ user: number; opponent: number }>({ user: 0, opponent: 0 });
+    const [roundScoresRecord, setRoundScoresRecord] = useState<{ user: number; opponent: number }[]>([]); // New State
     const [showRoundIntro, setShowRoundIntro] = useState(false);
     const [showSetResults, setShowSetResults] = useState(false);
     const [isMatchEnding, setIsMatchEnding] = useState(false);
@@ -74,11 +75,11 @@ const GamePlayView = () => {
     const channelRef = useRef<RealtimeChannel | null>(null);
 
     // Refs for real-time score tracking in timeouts
-    const pointsRef = useRef({ user: 10, opponent: 10 });
+    const pointsRef = useRef({ user: 0, opponent: 0 });
     const leaveRoomRef = useRef<(() => Promise<void>) | null>(null);
     const processedQuestionRef = useRef<number>(-1);
     const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const bufferedOpponentAnswers = useRef<Map<number, { isCorrect: boolean; points: number }>>(new Map());
+    const bufferedOpponentAnswers = useRef<Map<number, { isCorrect: boolean; points: number; currentScore?: number }>>(new Map());
     const currIndexRef = useRef<number>(0);
     const isConfirmedRef = useRef<boolean>(false);
     const winsNeededRef = useRef<number>(1);
@@ -255,19 +256,16 @@ const GamePlayView = () => {
             channelRef.current = channel;
 
             channel
-                .on('broadcast', { event: 'player_answer' }, ({ payload }: { payload: { userId: string; qIndex: number; isCorrect: boolean; points: number } }) => {
-                    const { userId: senderId, qIndex, isCorrect, points } = payload;
+                .on('broadcast', { event: 'player_answer' }, ({ payload }: { payload: { userId: string; qIndex: number; isCorrect: boolean; points: number; currentScore?: number } }) => {
+                    const { userId: senderId, qIndex, isCorrect, points, currentScore } = payload;
                     
                     if (senderId !== user.id) {
-                        console.log(`Realtime: Received answer for Q${qIndex} from opponent`);
-                        bufferedOpponentAnswers.current.set(qIndex, { isCorrect, points });
+                        console.log(`Realtime: Received answer for Q${qIndex} from opponent. Score: ${currentScore}`);
+                        bufferedOpponentAnswers.current.set(qIndex, { isCorrect, points, currentScore });
                         
                         if (qIndex === currIndexRef.current) {
                             setOpponentAnswered({ isCorrect, points });
-                            setOpponentScore(prev => prev + points);
-                            pointsRef.current.opponent += points;
-                            setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + points }));
-                            setRoundPoints(prev => ({ ...prev, opponent: points }));
+                            // DELAY UPDATE: Score will be updated in the transition phase
                         }
                     }
                 })
@@ -363,13 +361,14 @@ const GamePlayView = () => {
         setSelectedAnswer(index);
 
         const currentQ = questions[currentQuestionIndex];
-        const uPoints = index === currentQ.correctAnswer ? 1 : (index === -1 ? 0 : -1);
+        const uPoints = index === currentQ.correctAnswer ? 1 : 0;
 
         // Broadcast answer via persistent channel
         if (channelRef.current) {
             // Check if status is joined/subscribed to avoid REST fallback
             const status = channelRef.current.state;
             if (status === 'joined') {
+                const newScore = userScore + uPoints;
                 channelRef.current.send({
                     type: 'broadcast',
                     event: 'player_answer',
@@ -377,11 +376,13 @@ const GamePlayView = () => {
                         userId: userId,
                         qIndex: currentQuestionIndex,
                         isCorrect: index === currentQ.correctAnswer,
-                        points: uPoints
+                        points: uPoints,
+                        currentScore: newScore
                     }
                 });
             } else {
                 console.warn("Realtime: Channel not fully joined yet (status: " + status + "). Attempting send anyway...");
+                const newScore = userScore + uPoints;
                 channelRef.current.send({
                     type: 'broadcast',
                     event: 'player_answer',
@@ -389,14 +390,15 @@ const GamePlayView = () => {
                         userId: userId,
                         qIndex: currentQuestionIndex,
                         isCorrect: index === currentQ.correctAnswer,
-                        points: uPoints
+                        points: uPoints,
+                        currentScore: newScore
                     }
                 });
             }
         }
 
         setRoundPoints((prev: { user: number; opponent: number }) => ({ ...prev, user: uPoints }));
-    }, [isConfirmed, showTransition, isGameOver, questions, currentQuestionIndex, userId]);
+    }, [isConfirmed, showTransition, isGameOver, questions, currentQuestionIndex, userId, userScore]);
 
     // --- SYNCHRONIZED TRANSITION LOGIC ---
     useEffect(() => {
@@ -405,10 +407,7 @@ const GamePlayView = () => {
         if (bufferedAnswer && opponentAnswered === null) {
             console.log(`Sync: Applying buffered answer for Q${currentQuestionIndex}`);
             setOpponentAnswered(bufferedAnswer);
-            setOpponentScore(prev => prev + bufferedAnswer.points);
-            pointsRef.current.opponent += bufferedAnswer.points;
-            setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + bufferedAnswer.points }));
-            setRoundPoints(prev => ({ ...prev, opponent: bufferedAnswer.points }));
+            // Score update is deferred to transition block
         }
 
         // Condition: Both have answered OR (I have answered and timer is 0)
@@ -425,12 +424,27 @@ const GamePlayView = () => {
                     processedQuestionRef.current = currentQuestionIndex;
                     
                     // Final update of local scores before showing transition
-                    const uPoints = selectedAnswer === questions[currentQuestionIndex].correctAnswer ? 1 : (selectedAnswer === -1 ? 0 : -1);
+                    const uPoints = selectedAnswer === questions[currentQuestionIndex].correctAnswer ? 1 : 0;
                     
                     setUserScore(prev => prev + uPoints);
                     pointsRef.current.user += uPoints;
                     setRoundPointsHistory(prev => ({ ...prev, user: prev.user + uPoints }));
                     
+                    // UPDATE OPPONENT SCORE (Delayed Reveal)
+                    const buff = bufferedOpponentAnswers.current.get(currentQuestionIndex);
+                    if (buff) {
+                         if (buff.currentScore !== undefined) {
+                            setOpponentScore(buff.currentScore);
+                            pointsRef.current.opponent = buff.currentScore;
+                            setRoundPointsHistory(prev => ({ ...prev, opponent: buff.currentScore! }));
+                        } else {
+                            setOpponentScore(prev => prev + buff.points);
+                            pointsRef.current.opponent += buff.points;
+                            setRoundPointsHistory(prev => ({ ...prev, opponent: prev.opponent + buff.points }));
+                        }
+                        setRoundPoints(prev => ({ ...prev, opponent: buff.points }));
+                    }
+
                     setShowTransition(true);
 
                     // Hide transition and move next after 4 seconds
@@ -438,6 +452,10 @@ const GamePlayView = () => {
                         setShowTransition(false);
 
                         if (isEndOfRound) {
+                            // SAVE ROUND SCORES TO HISTORY
+                            const currentRoundScores = { ...pointsRef.current };
+                            setRoundScoresRecord(prev => [...prev, currentRoundScores]);
+
                             const finalUserRoundPoints = pointsRef.current.user;
                             const finalOpponentRoundPoints = pointsRef.current.opponent;
                             const userWonSet = finalUserRoundPoints > finalOpponentRoundPoints;
@@ -458,10 +476,10 @@ const GamePlayView = () => {
 
                             setTimeout(() => {
                                 setShowSetResults(false);
-                                pointsRef.current = { user: 10, opponent: 10 };
-                                setRoundPointsHistory({ user: 10, opponent: 10 });
-                                setUserScore(10);
-                                setOpponentScore(10);
+                                pointsRef.current = { user: 0, opponent: 0 };
+                                setRoundPointsHistory({ user: 0, opponent: 0 });
+                                setUserScore(0);
+                                setOpponentScore(0);
 
                                 if (!hasWinner && currentRound < maxRounds) {
                                     setCurrentQuestionIndex(prev => prev + 1);
@@ -974,7 +992,10 @@ const GamePlayView = () => {
                                  <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Your Score</div>
                                  <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{userScore}</div>
                                  <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${userScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
-                                     Total: {userScore}
+                                     Points: {roundScoresRecord.map(r => r.user).join('/')}
+                                 </div>
+                                 <div className="mt-1 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
+                                     Rating: {(roundScoresRecord.reduce((a, b) => a + b.user, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
                                  </div>
                              </div>
                          </div>
@@ -993,7 +1014,10 @@ const GamePlayView = () => {
                                  <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Opponent Score</div>
                                  <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{opponentScore}</div>
                                  <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${opponentScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
-                                     Total: {opponentScore}
+                                     Points: {roundScoresRecord.map(r => r.opponent).join('/')}
+                                 </div>
+                                 <div className="mt-1 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
+                                     Rating: {(roundScoresRecord.reduce((a, b) => a + b.opponent, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
                                  </div>
                              </div>
                          </div>
