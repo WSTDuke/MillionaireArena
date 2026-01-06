@@ -6,6 +6,8 @@ import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
 import { supabase } from '../../lib/supabase';
 import RankBadge from '../../components/shared/RankBadge';
 
+import { getRankFromMMR } from '../../lib/ranking';
+
 interface Profile {
   id: string;
   display_name: string | null;
@@ -15,12 +17,40 @@ interface Profile {
 
 const DashboardOverview = () => {
   const { dashboardCache, setDashboardCache } = useOutletContext<any>();
-  const [loading, setLoading] = useState(!dashboardCache.overviewTopUsers);
+  const [loading, setLoading] = useState(true); // Always show loading on page visit
   const [topUsers, setTopUsers] = useState<Profile[]>(dashboardCache.overviewTopUsers || []);
+  const [userStats, setUserStats] = useState({
+      totalMatches: 0,
+      totalWins: 0,
+      currentMMR: 0,
+      recentMatches: [] as any[]
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+             // 1. Fetch Profile for MMR
+             const { data: profile } = await supabase.from('profiles').select('mmr').eq('id', user.id).single();
+             const currentMMR = profile?.mmr || 0;
+
+             // 2. Fetch Stats (Matches & Wins)
+             // Used Promise.all for parallelism
+             const [matchesRes, winsRes, historyRes] = await Promise.all([
+                 supabase.from('game_history').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+                 supabase.from('game_history').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('result', 'Chiến thắng'),
+                 supabase.from('game_history').select('*').eq('user_id', user.id).order('played_at', { ascending: false }).limit(5)
+             ]);
+
+             setUserStats({
+                 totalMatches: matchesRes.count || 0,
+                 totalWins: winsRes.count || 0,
+                 currentMMR,
+                 recentMatches: historyRes.data || []
+             });
+        }
+
         const { data } = await supabase
           .from('profiles')
           .select('id, display_name, avatar_url, mmr')
@@ -42,6 +72,9 @@ const DashboardOverview = () => {
     fetchData();
   }, [setDashboardCache]);
 
+  const winRate = userStats.totalMatches > 0 ? Math.round((userStats.totalWins / userStats.totalMatches) * 100) : 0;
+  const rankInfo = getRankFromMMR(userStats.currentMMR);
+
   if (loading) return <OverviewPageSkeleton />;
 
   return (
@@ -62,10 +95,38 @@ const DashboardOverview = () => {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard icon={Bookmark} label="Xếp hạng hiện tại" value="--" subValue="-- Server" color="text-yellow-400" gradient="from-yellow-500/20 to-orange-500/5" />
-        <StatCard icon={Swords} label="Tỉ lệ thắng" value="0%" subValue="-- tuần này" color="text-green-400" gradient="from-green-500/20 to-emerald-500/5" />
-        <StatCard icon={TrendingUp} label="Tổng thu nhập" value="$0" subValue="-- hôm qua" color="text-fuchsia-400" gradient="from-fuchsia-500/20 to-purple-500/5" />
-        <StatCard icon={Clock} label="Giờ chơi" value="0h" subValue="New Player" color="text-blue-400" gradient="from-blue-500/20 to-cyan-500/5" />
+        <StatCard 
+            icon={Bookmark} 
+            label="Xếp hạng hiện tại" 
+            value={`${rankInfo.tier} ${rankInfo.division}`} 
+            subValue={`${userStats.currentMMR} MMR`} 
+            color="text-yellow-400" 
+            gradient="from-yellow-500/20 to-orange-500/5" 
+        />
+        <StatCard 
+            icon={TrendingUp} 
+            label="Tổng số trận" 
+            value={`${userStats.totalMatches}`} 
+            subValue="Đã chơi" 
+            color="text-fuchsia-400" 
+            gradient="from-fuchsia-500/20 to-purple-500/5" 
+        />
+        <StatCard 
+            icon={Clock} 
+            label="Số trận thắng" 
+            value={`${userStats.totalWins}`} 
+            subValue="Chiến thắng" 
+            color="text-blue-400" 
+            gradient="from-blue-500/20 to-cyan-500/5" 
+        />
+          <StatCard 
+            icon={Swords} 
+            label="Tỉ lệ thắng" 
+            value={`${winRate}%`} 
+            subValue={`${userStats.totalWins} trận thắng`} 
+            color="text-green-400" 
+            gradient="from-green-500/20 to-emerald-500/5" 
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -76,11 +137,27 @@ const DashboardOverview = () => {
           {/* Recent Matches History */}
           <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Lịch sử đấu</h3>
-              <button className="text-sm text-fuchsia-400 hover:text-fuchsia-300">Xem tất cả</button>
+              <h3 className="text-xl font-bold">Lịch sử đấu mới nhất</h3>
+              <Link to="/dashboard/profile" className="text-sm text-fuchsia-400 hover:text-fuchsia-300">Xem tất cả</Link>
             </div>
             <div className="space-y-4">
-              <MatchRow mode="Solo Ranked" result="Victory" score="24/4/12" time="20m" xp="+340" date="2h ago" />
+              {userStats.recentMatches.length > 0 ? (
+                  userStats.recentMatches.map((match) => (
+                      <MatchRow 
+                        key={match.id}
+                        mode={match.mode || (match.mode === 'Ranked' ? 'Ranked Match' : 'Normal Match')} 
+                        result={match.result || 'Hòa'} 
+                        score={`${match.score_user} - ${match.score_opponent}`} 
+                        time={new Date(match.played_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        xp={match.result === 'Chiến thắng' ? '+XP' : '+0 XP'} 
+                        date={new Date(match.played_at).toLocaleDateString()}
+                        roundScores={match.round_scores}
+                        mmrChange={match.mode === 'Ranked' ? match.mmr_change : undefined}
+                      />
+                  ))
+              ) : (
+                  <div className="text-center text-gray-500 italic py-4">Chưa có trận đấu nào được ghi lại.</div>
+              )}
             </div>
           </div>
         </div>
@@ -145,26 +222,63 @@ const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }: { ico
   </div>
 );
 
-const MatchRow = ({ mode, result, score, time, xp, date }: { mode: string, result: string, score: string, time: string, xp: string, date: string }) => (
-  <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 transition-colors group">
-    <div className="flex items-center gap-4">
-      <div className={`w-2 h-10 rounded-full ${result === 'Victory' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-      <div>
-        <div className="font-bold text-white mb-0.5">{mode}</div>
-        <div className="text-xs text-gray-500">{date} • {time}</div>
-      </div>
-    </div>
-    <div className="flex items-center gap-8">
-      <div className="text-center">
-        <div className={`font-bold ${result === 'Victory' ? 'text-green-400' : 'text-red-400'}`}>{result}</div>
-        <div className="text-xs text-gray-500">{score}</div>
-      </div>
-      <div className="text-right min-w-[60px]">
-        <div className="text-fuchsia-400 font-bold">{xp} XP</div>
-      </div>
-    </div>
-  </div>
-);
+const MatchRow = ({ mode, result, score, time, date, roundScores, mmrChange }: { 
+    mode: string, 
+    result: string, 
+    score: string, 
+    time: string, 
+    xp?: string, 
+    date: string,
+    roundScores?: number[],
+    mmrChange?: number
+}) => {
+    // Calculate Average
+    const avgScore = roundScores && roundScores.length > 0 
+        ? (roundScores.reduce((a, b) => a + b, 0) / roundScores.length).toFixed(1)
+        : null;
+
+    return (
+        <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 transition-colors group relative overflow-hidden">
+            {/* Left: Result & Time */}
+            <div className="flex items-center gap-4 min-w-[180px]">
+                 <div className={`w-1.5 h-12 rounded-full ${result === 'Chiến thắng' ? 'bg-green-500' : (result === 'Hòa' ? 'bg-yellow-500' : 'bg-red-500')}`}></div>
+                 <div>
+                    <div className={`font-bold text-lg ${result === 'Chiến thắng' ? 'text-green-500' : (result === 'Hòa' ? 'text-yellow-500' : 'text-red-500')}`}>
+                        {result}
+                    </div>
+                    <div className="text-xs text-gray-500 font-medium">{date} • {time}</div>
+                 </div>
+            </div>
+
+            {/* Center: Mode */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <span className="font-bold text-white text-sm">{mode === 'Ranked Match' ? 'Ranked' : (mode === 'Normal Match' ? 'Normal' : mode)}</span>
+            </div>
+
+            {/* Right: Scores & MMR */}
+            <div className="flex items-center gap-6 justify-end flex-1">
+                 {/* Scores */}
+                 <div className="text-right">
+                    {roundScores && roundScores.length > 0 ? (
+                        <>
+                            <div className="font-black text-xl text-white tracking-widest">{roundScores.join(' / ')}</div>
+                            <div className="text-xs text-gray-400 font-bold">{avgScore}</div>
+                        </>
+                    ) : (
+                        <div className="text-xl font-black text-white">{score}</div>
+                    )}
+                 </div>
+
+                 {/* MMR Badge */}
+                 {mode.includes('Ranked') && mmrChange !== undefined && (
+                    <div className={`px-2 py-1 rounded-md font-bold text-xs ${mmrChange >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {mmrChange >= 0 ? '+' : ''}{mmrChange} MMR
+                    </div>
+                 )}
+            </div>
+        </div>
+    );
+};
 
 const LeaderboardRow = ({ rank, name, mmr, isTop }: { rank: number, name: string | null, mmr: number | null, isTop: boolean }) => (
   <div className={`flex items-center justify-between p-3 rounded-xl transition-colors ${isTop ? 'bg-yellow-500/10 border border-yellow-500/20' : 'hover:bg-white/5 border border-transparent'}`}>

@@ -76,6 +76,8 @@ const GamePlayView = () => {
 
     // Refs for real-time score tracking in timeouts
     const pointsRef = useRef({ user: 0, opponent: 0 });
+    const surrenderProcessedRef = useRef(false);
+    const historySavedRef = useRef(false); // Prevent duplicate history saves
     const leaveRoomRef = useRef<(() => Promise<void>) | null>(null);
     const processedQuestionRef = useRef<number>(-1);
     const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,7 +85,6 @@ const GamePlayView = () => {
     const currIndexRef = useRef<number>(0);
     const isConfirmedRef = useRef<boolean>(false);
     const winsNeededRef = useRef<number>(1);
-    const surrenderProcessedRef = useRef<boolean>(false);
 
     const roomId = searchParams.get('roomId');
     const [roomSettings, setRoomSettings] = useState<{ questions_per_round?: number; format?: string; max_rounds?: number } | null>(null);
@@ -140,7 +141,7 @@ const GamePlayView = () => {
                     // Fetch Room settings
                     const { data: roomData, error: roomError } = await supabase
                         .from('rooms')
-                        .select('*, participants:room_participants(*)')
+                        .select('*')
                         .eq('id', roomId)
                         .single();
 
@@ -205,20 +206,58 @@ const GamePlayView = () => {
         if (surrenderProcessedRef.current) return;
         surrenderProcessedRef.current = true;
 
-        // 2. Set self as loser (Opponent gets +1)
-        setSetScores(prev => ({
-            ...prev,
-            opponent: prev.opponent + 1
-        }));
+        // 2. Calculate final scores (opponent wins)
+        const finalScores = {
+            user: setScores.user,
+            opponent: setScores.opponent + 1
+        };
 
-        // 3. Trigger Game Over sequence
+        // 3. Save game history IMMEDIATELY for both players
+        const mode = isRanked ? 'Ranked' : (isBlitzmatch ? 'Blitz' : ((location as any).state?.isCustom ? 'Custom' : 'Normal'));
+        const userRoundScores = roundScoresRecord.map(r => r.user);
+        const opponentRoundScores = roundScoresRecord.map(r => r.opponent);
+        
+        // Pad scores
+        let maxRounds = 3;
+        if (isRanked) maxRounds = 5;
+        else if (roomSettings?.format?.startsWith('Bo')) {
+            maxRounds = parseInt(roomSettings.format.replace('Bo', '')) || 3;
+        }
+        
+        while (userRoundScores.length < maxRounds) userRoundScores.push(0);
+        while (opponentRoundScores.length < maxRounds) opponentRoundScores.push(0);
+
+        try {
+            // Save history for current user only (surrendered = lost)
+            if (!historySavedRef.current) {
+                historySavedRef.current = true;
+                await supabase.from('game_history').insert({
+                    user_id: userId,
+                    opponent_id: opponent?.id,
+                    room_id: roomId,
+                    result: 'Thất bại',
+                    score_user: finalScores.user,
+                    score_opponent: finalScores.opponent,
+                    mode: mode,
+                    mmr_change: 0, // No MMR change on surrender
+                    round_scores: userRoundScores
+                });
+            }
+        } catch (err) {
+            console.error("Failed to save surrender history:", err);
+        }
+
+        // 4. Update UI scores
+        setSetScores(finalScores);
+
+        // 5. Trigger Game Over sequence
         setIsMatchEnding(true);
         setTimeout(() => {
             setIsGameOver(true);
             setIsMatchEnding(false);
             setModalType(null);
         }, 2000);
-    }, [userId]);
+    }, [userId, setScores, opponent, roomId, isRanked, isBlitzmatch, location, roundScoresRecord, roomSettings]);
 
     useEffect(() => {
         leaveRoomRef.current = leaveRoom;
@@ -245,10 +284,30 @@ const GamePlayView = () => {
         if (!roomId) return;
 
         let channel: RealtimeChannel | null = null;
+        let retryTimeout: ReturnType<typeof setTimeout>;
+        let isMounted = true;
+
+        const cleanup = () => {
+             if (channel) {
+                console.log("Cleaning up Realtime channel...");
+                supabase.removeChannel(channel);
+                channel = null;
+                channelRef.current = null;
+            }
+            if (retryTimeout) clearTimeout(retryTimeout);
+        };
 
         const initializeChannel = async () => {
+            if (!isMounted) return;
+            
+            // Clean up existing before creating new (just in case)
+            if (channelRef.current) {
+                await supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
+
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            if (!user || !isMounted) return;
 
             const channelId = `game_${roomId}`;
             channel = supabase.channel(channelId, {
@@ -292,7 +351,7 @@ const GamePlayView = () => {
                         }
                     }
                 })
-                .on('broadcast', { event: 'player_surrendered' }, ({ payload }: { payload: { userId: string } }) => {
+                .on('broadcast', { event: 'player_surrendered' }, async ({ payload }: { payload: { userId: string } }) => {
                     const { userId: surrenderingId } = payload;
                     if (surrenderingId !== user.id) {
                         if (surrenderProcessedRef.current) return;
@@ -300,21 +359,59 @@ const GamePlayView = () => {
                         
                         console.log("Realtime: Opponent surrendered! You win.");
                         
-                        // Current player wins
-                        setSetScores(prev => ({
-                            ...prev,
-                            user: prev.user + 1
-                        }));
+                        // Calculate final scores (current player wins)
+                        const finalScores = {
+                            user: setScores.user + 1,
+                            opponent: setScores.opponent
+                        };
+
+                        // Save history IMMEDIATELY for winner
+                        const mode = isRanked ? 'Ranked' : (isBlitzmatch ? 'Blitz' : ((location as any).state?.isCustom ? 'Custom' : 'Normal'));
+                        const userRoundScores = roundScoresRecord.map(r => r.user);
+                        
+                        // Pad scores
+                        let maxRounds = 3;
+                        if (isRanked) maxRounds = 5;
+                        else if (roomSettings?.format?.startsWith('Bo')) {
+                            maxRounds = parseInt(roomSettings.format.replace('Bo', '')) || 3;
+                        }
+                        
+                        while (userRoundScores.length < maxRounds) userRoundScores.push(0);
+
+                        try {
+                            if (!historySavedRef.current) {
+                                historySavedRef.current = true;
+                                await supabase.from('game_history').insert({
+                                    user_id: user.id,
+                                    opponent_id: opponent?.id,
+                                    room_id: roomId,
+                                    result: 'Chiến thắng',
+                                    score_user: finalScores.user,
+                                    score_opponent: finalScores.opponent,
+                                    mode: mode,
+                                    mmr_change: 0, // No MMR on opponent surrender
+                                    round_scores: userRoundScores
+                                });
+                            }
+                        } catch (err) {
+                            console.error("Failed to save winner history on surrender:", err);
+                        }
+
+                        // Update UI scores
+                        setSetScores(finalScores);
 
                         // Trigger Game Over sequence
                         setIsMatchEnding(true);
                         setTimeout(() => {
-                            setIsGameOver(true);
-                            setIsMatchEnding(false);
+                            if (isMounted) {
+                                setIsGameOver(true);
+                                setIsMatchEnding(false);
+                            }
                         }, 2000);
                     }
                 })
                 .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
+
                      if (key !== user.id && !isGameOver && !surrenderProcessedRef.current) {
                         console.log("Opponent disconnected (Presence)! Auto-win.");
                          surrenderProcessedRef.current = true;
@@ -324,12 +421,16 @@ const GamePlayView = () => {
                         }));
                         setIsMatchEnding(true);
                         setTimeout(() => {
-                            setIsGameOver(true);
-                            setIsMatchEnding(false);
+                            if (isMounted) {
+                                setIsGameOver(true);
+                                setIsMatchEnding(false);
+                            }
                         }, 2000);
                      }
                 })
                 .subscribe(async (status) => {
+                    if (!isMounted) return;
+                    
                     if (status === 'SUBSCRIBED') {
                         console.log("Realtime: WebSocket connected");
                         await channel?.track({
@@ -338,7 +439,7 @@ const GamePlayView = () => {
                         });
                     } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
                          console.warn(`Realtime: Subscription ${status}. Attempting reconnect...`);
-                         setTimeout(initializeChannel, 3000);
+                         retryTimeout = setTimeout(initializeChannel, 3000);
                     }
                 });
         };
@@ -346,10 +447,8 @@ const GamePlayView = () => {
         initializeChannel();
 
         return () => {
-            if (channel) {
-                supabase.removeChannel(channel);
-                channelRef.current = null;
-            }
+            isMounted = false;
+            cleanup();
         };
     }, [roomId]);
 
@@ -637,7 +736,6 @@ const GamePlayView = () => {
                                 <Trophy className="text-blue-400" size={12} />
                                 <span className="text-xs font-black text-white">{setScores.user} ( hiệp ) / {userScore} ( điểm )</span>
                             </div>
-                            {/* Round Victory Bars (Me) */}
                             <div className="flex gap-1">
                                 {Array.from({ length: winsNeeded }).map((_, i) => (
                                     <div 
@@ -710,7 +808,6 @@ const GamePlayView = () => {
                                 <Zap className="text-red-400" size={12} />
                                 <span className="text-xs font-black text-white">{setScores.opponent} ( hiệp ) / {opponentScore} ( điểm )</span>
                             </div>
-                            {/* Round Victory Bars (Opponent) */}
                             <div className="flex gap-1">
                                 {Array.from({ length: winsNeeded }).map((_, i) => (
                                     <div 
@@ -1067,11 +1164,57 @@ const GamePlayView = () => {
                     ) : (
                         <button 
                             onClick={async () => {
+                                // SAVE GAME HISTORY
+                                const isWin = setScores.user > setScores.opponent;
+                                const isDraw = setScores.user === setScores.opponent;
+                                const result = isWin ? 'Chiến thắng' : (isDraw ? 'Hòa' : 'Thất bại');
+
+                                // Determine Mode
+                                let mode = 'Normal';
+                                if (isRanked) mode = 'Ranked';
+                                else if (isBlitzmatch) mode = 'Blitz';
+                                // Assuming Custom matches might set a specific flag or we default to Normal if unranked & not blitz
+                                // If you have an isCustom flag, use it here. For now:
+                                else if ((location as any).state?.isCustom) mode = 'Custom';
+
+                                // Prepare Round Scores (User's scores per round) - PAD WITH 0s
+                                const userRoundScores = roundScoresRecord.map(r => r.user);
+                                
+                                // Calculate max rounds based on format
+                                let maxRounds = 3; // Default Bo3
+                                if (isRanked) maxRounds = 5; // Ranked is Bo5
+                                else if (roomSettings?.format?.startsWith('Bo')) {
+                                    maxRounds = parseInt(roomSettings.format.replace('Bo', '')) || 3;
+                                }
+
+                                // Pad with 0s for unplayed rounds
+                                while (userRoundScores.length < maxRounds) {
+                                    userRoundScores.push(0);
+                                }
+                                
+                                try {
+                                    // Save history for CURRENT USER only (if not already saved)
+                                    if (!historySavedRef.current) {
+                                        historySavedRef.current = true;
+                                        await supabase.from('game_history').insert({
+                                            user_id: userId,
+                                            opponent_id: opponent?.id,
+                                            room_id: roomId,
+                                            result: result,
+                                            score_user: setScores.user,
+                                            score_opponent: setScores.opponent,
+                                            mode: mode,
+                                            mmr_change: isRanked ? (mmrChange || 0) : 0,
+                                            round_scores: userRoundScores
+                                        });
+                                    }
+                                } catch (err) {
+                                    console.error("Failed to save game history:", err);
+                                }
+
                                 if (isRanked) {
                                     // 1. Calculate & Save MMR if not already done
                                     if (userId && profile) {
-                                        const isWin = setScores.user > setScores.opponent;
-                                        const isDraw = setScores.user === setScores.opponent;
                                         if (!isDraw) {
                                             const currentMMR = profile.mmr ?? null;
                                             const calculatedNewMMR = calculateMMRChange(currentMMR, isWin);

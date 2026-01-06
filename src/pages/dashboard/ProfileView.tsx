@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
-  Trophy, Swords, Target, Clock, Zap, Medal, 
+  Trophy, Swords, Target, Zap, Medal, 
   Share2, Edit3,
   Bookmark,
   Users,
@@ -44,9 +44,14 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [clanInfo, setClanInfo] = useState<ClanData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Always show loading on page visit
   const [searchParams] = useSearchParams();
   const userIdFromQuery = searchParams.get('id');
+  const [userStats, setUserStats] = useState({
+      totalMatches: 0,
+      totalWins: 0,
+      recentMatches: [] as any[]
+  });
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -95,9 +100,22 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
 
           // If viewing our own profile, set user as well for email/etc
           const { data: { user: currentUser } } = await supabase.auth.getUser();
-          if (currentUser?.id === targetUserId) {
-            setUser(currentUser);
-          }
+            if (currentUser?.id === targetUserId) {
+              setUser(currentUser);
+            }
+
+             // Fetch Stats (Matches & Wins) for the target user
+             const [matchesRes, winsRes, historyRes] = await Promise.all([
+                 supabase.from('game_history').select('*', { count: 'exact', head: true }).eq('user_id', targetUserId),
+                 supabase.from('game_history').select('*', { count: 'exact', head: true }).eq('user_id', targetUserId).eq('result', 'Chiến thắng'),
+                 supabase.from('game_history').select('*').eq('user_id', targetUserId).order('played_at', { ascending: false }).limit(10)
+             ]);
+
+             setUserStats({
+                 totalMatches: matchesRes.count || 0,
+                 totalWins: winsRes.count || 0,
+                 recentMatches: historyRes.data || []
+             });
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -267,15 +285,30 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
           </div>
         </div>
 
-        {/* CENTER & RIGHT COLUMN (History & Achievements) */}
+       {/* CENTER & RIGHT COLUMN (History & Achievements) */}
         <div className={`xl:col-span-2 space-y-8 ${slideInRight}`}>
           
           {/* Overview Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-             <MiniStatBox label="Tổng số trận đấu" value="0" icon={Swords} />
-             <MiniStatBox label="Tỉ lệ thắng" value="0%" icon={Trophy} color="text-green-400" />
-             <MiniStatBox label="Tỉ lệ thất bại" value="0" icon={Target} color="text-red-400" />
-             <MiniStatBox label="Thời gian chơi" value="0h" icon={Clock} color="text-blue-400" />
+             <MiniStatBox label="Tổng số trận đấu" value={`${userStats.totalMatches}`} icon={Swords} />
+             <MiniStatBox 
+                label="Tỉ lệ thắng" 
+                value={`${userStats.totalMatches > 0 ? Math.round((userStats.totalWins / userStats.totalMatches) * 100) : 0}%`} 
+                icon={Trophy} 
+                color="text-green-400" 
+             />
+             <MiniStatBox 
+                label="Số trận thắng" 
+                value={`${userStats.totalWins}`} 
+                icon={Target} 
+                color="text-blue-400" 
+             />
+             <MiniStatBox 
+                label="Số trận thua" 
+                value={`${userStats.totalMatches - userStats.totalWins}`} 
+                icon={Zap} 
+                color="text-red-400" 
+             />
           </div>
 
 
@@ -285,7 +318,22 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                <History className="text-fuchsia-500" size={20} /> Lịch sử đấu
             </h3>
             <div className="space-y-4">
-              <div className="text-center py-10 text-gray-500 italic text-sm">Chưa có lịch sử đấu...</div>
+              {userStats.recentMatches.length > 0 ? (
+                  userStats.recentMatches.map((match) => (
+                      <MatchRow 
+                        key={match.id}
+                        mode={match.mode || (match.mode === 'Ranked' ? 'Ranked Match' : 'Normal Match')} 
+                        result={match.result || 'Hòa'} 
+                        score={`${match.score_user} - ${match.score_opponent}`} 
+                        time={new Date(match.played_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        date={new Date(match.played_at).toLocaleDateString()}
+                        roundScores={match.round_scores}
+                        mmrChange={match.mode === 'Ranked' ? match.mmr_change : undefined}
+                      />
+                  ))
+              ) : (
+                  <div className="text-center py-10 text-gray-500 italic text-sm">Chưa có lịch sử đấu...</div>
+              )}
             </div>
           </div>
 
@@ -295,6 +343,63 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
   );
 };
 
+
+const MatchRow = ({ mode, result, score, time, date, roundScores, mmrChange }: { 
+    mode: string, 
+    result: string, 
+    score: string, 
+    time: string, 
+    date: string,
+    roundScores?: number[],
+    mmrChange?: number
+}) => {
+    // Calculate Average
+    const avgScore = roundScores && roundScores.length > 0 
+        ? (roundScores.reduce((a, b) => a + b, 0) / roundScores.length).toFixed(1)
+        : null;
+
+    return (
+        <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 transition-colors group relative overflow-hidden">
+            {/* Left: Result & Time */}
+            <div className="flex items-center gap-4 min-w-[180px]">
+                 <div className={`w-1.5 h-12 rounded-full ${result === 'Chiến thắng' ? 'bg-green-500' : (result === 'Hòa' ? 'bg-yellow-500' : 'bg-red-500')}`}></div>
+                 <div>
+                    <div className={`font-bold text-lg ${result === 'Chiến thắng' ? 'text-green-500' : (result === 'Hòa' ? 'text-yellow-500' : 'text-red-500')}`}>
+                        {result}
+                    </div>
+                    <div className="text-xs text-gray-500 font-medium">{date} • {time}</div>
+                 </div>
+            </div>
+
+            {/* Center: Mode */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <span className="font-bold text-white text-sm">{mode === 'Ranked Match' ? 'Ranked' : (mode === 'Normal Match' ? 'Normal' : mode)}</span>
+            </div>
+
+            {/* Right: Scores & MMR */}
+            <div className="flex items-center gap-6 justify-end flex-1">
+                 {/* Scores */}
+                 <div className="text-right">
+                    {roundScores && roundScores.length > 0 ? (
+                        <>
+                            <div className="font-black text-xl text-white tracking-widest">{roundScores.join(' / ')}</div>
+                            <div className="text-xs text-gray-400 font-bold">{avgScore}</div>
+                        </>
+                    ) : (
+                        <div className="text-xl font-black text-white">{score}</div>
+                    )}
+                 </div>
+
+                 {/* MMR Badge */}
+                 {mode.includes('Ranked') && mmrChange !== undefined && (
+                    <div className={`px-2 py-1 rounded-md font-bold text-xs ${mmrChange >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {mmrChange >= 0 ? '+' : ''}{mmrChange} MMR
+                    </div>
+                 )}
+            </div>
+        </div>
+    );
+};
 
 interface MiniStatBoxProps {
   label: string;

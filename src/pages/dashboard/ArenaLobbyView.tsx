@@ -198,36 +198,66 @@ const ArenaLobbyView = () => {
     useEffect(() => {
         if (!roomId || !user?.id) return;
 
-        console.log("Subscribing to room:", roomId);
-        const channel = supabase
-            .channel(`room_${roomId}`)
-            .on('postgres_changes', { 
-                event: '*', 
-                schema: 'public', 
-                table: 'rooms', 
-                filter: `id=eq.${roomId}` 
-            }, (payload) => {
-                console.log("Room update received:", payload);
-                const updatedRoom = payload.new as Room;
-                if (updatedRoom && updatedRoom.id) {
-                    setRoomData(updatedRoom);
-                    setParticipants(updatedRoom.participants || []);
-                    setIsHost(updatedRoom.host_id === user?.id);
-                    
-                    if (updatedRoom.status === 'playing') {
-                         isNavigatingToGame.current = true;
-                         setMatchFound(true);
-                         navigate(`/gameplay?mode=${mode}&roomId=${roomId}`);
+        let channel: ReturnType<typeof supabase.channel> | null = null;
+        let retryTimeout: ReturnType<typeof setTimeout>;
+        let isMounted = true;
+
+        const cleanup = () => {
+             if (channel) {
+                console.log("Cleaning up Room subscription...");
+                supabase.removeChannel(channel);
+                channel = null;
+             }
+             if (retryTimeout) clearTimeout(retryTimeout);
+        };
+
+        const initializeSubscription = () => {
+            if (!isMounted) return;
+
+            console.log("Subscribing to room:", roomId);
+            channel = supabase
+                .channel(`room_${roomId}`)
+                .on('postgres_changes', { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'rooms', 
+                    filter: `id=eq.${roomId}` 
+                }, (payload) => {
+                    if (!isMounted) return;
+                    console.log("Room update received:", payload);
+                    const updatedRoom = payload.new as Room;
+                    if (updatedRoom && updatedRoom.id) {
+                        setRoomData(updatedRoom);
+                        setParticipants(updatedRoom.participants || []);
+                        setIsHost(updatedRoom.host_id === user?.id);
+                        
+                        // Only navigate if we're not already navigating
+                        if (updatedRoom.status === 'playing' && !isNavigatingToGame.current) {
+                             isNavigatingToGame.current = true;
+                             setMatchFound(true);
+                             navigate(`/gameplay?mode=${mode}&roomId=${roomId}`);
+                        }
                     }
-                }
-            })
-            .subscribe((status) => {
-                console.log(`Subscription status for room ${roomId}:`, status);
-            });
+                })
+                .subscribe((status) => {
+                    if (!isMounted) return;
+                    console.log(`Subscription status for room ${roomId}:`, status);
+                    
+                    if (status === 'CLOSED' || status === 'TIMED_OUT') {
+                        console.warn("Room subscription unstable. Retrying...");
+                        retryTimeout = setTimeout(() => {
+                            cleanup();
+                            initializeSubscription();
+                        }, 3000);
+                    }
+                });
+        };
+
+        initializeSubscription();
 
         return () => {
-             console.log("Unsubscribing from room (no exit):", roomId);
-             supabase.removeChannel(channel);
+            isMounted = false;
+            cleanup();
         };
     }, [roomId, user?.id, mode, navigate]);
 

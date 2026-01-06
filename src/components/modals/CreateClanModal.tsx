@@ -121,7 +121,6 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
               </div>
            </div>
 
-           {/* Inner Selector Drawer */}
            {selectorView !== 'none' && (
              <div className="absolute inset-0 bg-neutral-900/95 backdrop-blur-md z-20 p-8 animate-in slide-in-from-left duration-300">
                 <div className="flex justify-between items-center mb-8">
