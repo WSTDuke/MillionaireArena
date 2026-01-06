@@ -112,60 +112,63 @@ const GamePlayView = () => {
     const question = questions[currentQuestionIndex];
     const hasFetched = useRef(false);
 
+
     useEffect(() => {
-        if (hasFetched.current) return;
-        hasFetched.current = true;
+        // Redirect if state is lost (e.g., page reload)
+        if (!roomId && !isBlitzmatch) {
+            navigate('/dashboard/arena');
+            return;
+        }
 
         const getData = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    setUserId(user.id);
-                    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-                    setProfile(profileData);
+                if (!user) {
+                    setIsLoadingQuestions(false);
+                    return;
+                }
+                setUserId(user.id);
+                // Also get profile for display
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+                if (profile) setProfile(profile);
 
+                if (roomId) {
+                    // Fetch Room settings
+                    const { data: roomData, error: roomError } = await supabase
+                        .from('rooms')
+                        .select('*, participants:room_participants(*)')
+                        .eq('id', roomId)
+                        .single();
 
-                    // Fetch Room data if exists
-                    if (roomId) {
-                        console.log("Fetching room data for ID:", roomId);
-                        const { data: roomData, error: roomError } = await supabase
-                            .from('rooms')
-                            .select('*')
-                            .eq('id', roomId)
-                            .maybeSingle();
-                        
-                        if (roomData) {
-                            if (roomData.settings) {
-                                setRoomSettings(roomData.settings);
-                            }
-                            
-                            // SYNC QUESTIONS FROM DATABASE
-                            if (roomData.questions && Array.isArray(roomData.questions)) {
-                                console.log("Using synchronized questions from DB:", roomData.questions.length);
-                                setQuestions(roomData.questions);
-                                setIsLoadingQuestions(false);
-                            } else {
-                                console.warn("No questions found in room data, guest might be waiting for host...");
-                                // If guest enters before host finishes fetching, wait for DB update
-                            }
-                            
-                            // Get Opponent info
-                            const opp = roomData.participants?.find((p: Participant) => p.id !== user.id);
-                            if (opp) setOpponent(opp);
-                        } else if (!roomError) {
-                            console.warn("Room not found in database for ID:", roomId);
+                    if (roomData) {
+                        if (roomData.settings) {
+                            setRoomSettings(roomData.settings);
                         }
-                        
-                        if (roomError) {
-                            console.error("Error fetching room settings:", roomError.message, roomError);
+
+                        // SYNC QUESTIONS FROM DATABASE
+                        if (roomData.questions && Array.isArray(roomData.questions)) {
+                            console.log("Using synchronized questions from DB:", roomData.questions.length);
+                            setQuestions(roomData.questions);
+                            setIsLoadingQuestions(false);
+                        } else {
+                            console.warn("No questions found in room data, guest might be waiting for host...");
                         }
-                    } else if (!isRanked && !isBlitzmatch) {
-                        // For solo testing / old matchmaking fallback if no roomId
-                        const r1 = await fetchQuestions(10, 'easy', user.id);
-                        setQuestions(r1);
-                        setIsLoadingQuestions(false);
+
+                        // Get Opponent info
+                        const opp = roomData.participants?.find((p: Participant) => p.id !== user.id);
+                        if (opp) setOpponent(opp);
+                    } else if (roomError) {
+                         console.error("Error fetching room settings:", roomError.message, roomError);
                     }
-
+                } else if (!isRanked && !isBlitzmatch) {
+                    // For solo/testing
+                    const r1 = await fetchQuestions(10, 'easy', user.id);
+                    setQuestions(r1);
+                    setIsLoadingQuestions(false);
                 } else {
                      setIsLoadingQuestions(false);
                 }
@@ -177,7 +180,7 @@ const GamePlayView = () => {
             }
         };
         getData();
-    }, [roomId, isRanked, isBlitzmatch]);
+    }, [roomId, isRanked, isBlitzmatch, navigate]);
 
     const leaveRoom = useCallback(async () => {
         if (!roomId) return;
@@ -250,7 +253,8 @@ const GamePlayView = () => {
             const channelId = `game_${roomId}`;
             channel = supabase.channel(channelId, {
                 config: {
-                    broadcast: { self: false }
+                    broadcast: { self: false },
+                    presence: { key: user.id }
                 }
             });
             channelRef.current = channel;
@@ -310,12 +314,31 @@ const GamePlayView = () => {
                         }, 2000);
                     }
                 })
-                .subscribe((status: string) => {
+                .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
+                     if (key !== user.id && !isGameOver && !surrenderProcessedRef.current) {
+                        console.log("Opponent disconnected (Presence)! Auto-win.");
+                         surrenderProcessedRef.current = true;
+                         setSetScores(prev => ({
+                            ...prev,
+                            user: winsNeededRef.current 
+                        }));
+                        setIsMatchEnding(true);
+                        setTimeout(() => {
+                            setIsGameOver(true);
+                            setIsMatchEnding(false);
+                        }, 2000);
+                     }
+                })
+                .subscribe(async (status) => {
                     if (status === 'SUBSCRIBED') {
-                        console.log("Realtime: WebSocket connected for room", roomId);
+                        console.log("Realtime: WebSocket connected");
+                        await channel?.track({
+                             online_at: new Date().toISOString(),
+                             user_id: user.id
+                        });
                     } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                        console.warn(`Realtime: Subscription ${status}. Attempting reconnect...`);
-                        setTimeout(initializeChannel, 3000);
+                         console.warn(`Realtime: Subscription ${status}. Attempting reconnect...`);
+                         setTimeout(initializeChannel, 3000);
                     }
                 });
         };
