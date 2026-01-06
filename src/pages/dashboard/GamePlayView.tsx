@@ -630,7 +630,7 @@ const GamePlayView = () => {
                 {/* Center: Timer & Round */}
                 <div className="flex items-center gap-8">
                     <div className="flex flex-col items-center">
-                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-1">Round {currentRound} - Câu {questionNumberInRound}/{questionsPerRound}</div>
+                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-1">Hiệp {currentRound} - Câu {questionNumberInRound}/{questionsPerRound}</div>
                          <div className="text-2xl font-black italic text-white/10 tracking-tighter">VS</div>
                     </div>
 
@@ -654,7 +654,7 @@ const GamePlayView = () => {
                              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-2 bg-neutral-900 border border-white/5 px-3 py-1 rounded-full animate-bounce">
                                  <Loader2 size={10} className="animate-spin text-blue-500" />
                                  <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
-                                     {isConfirmed && opponentAnswered ? 'Both Answered!' : isConfirmed ? 'Waiting for Opponent' : 'Opponent Answered!'}
+                                     {isConfirmed && opponentAnswered ? 'Cả hai đã trả lời!' : isConfirmed ? 'Đang chờ đối thủ...' : 'Đối thủ đã trả lời!'}
                                  </span>
                              </div>
                         )}
@@ -721,7 +721,7 @@ const GamePlayView = () => {
                     <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-[40px] blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
                     <div className="bg-neutral-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-6 md:p-12 text-center shadow-2xl relative">
                         <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">
-                            Question 0{currentQuestionIndex + 1}
+                            Câu 0{currentQuestionIndex + 1}
                         </div>
                         <h2 className="text-xl md:text-3xl font-bold leading-tight text-white mb-2">
                             {question?.text || "..."}
@@ -842,12 +842,12 @@ const GamePlayView = () => {
                                         />
                                     </div>
                                 </div>
-                                <div className="absolute -bottom-4 -right-4 px-4 py-2 bg-blue-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">YOU</div>
+                                <div className="absolute -bottom-4 -right-4 px-4 py-2 bg-blue-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">BẠN</div>
                             </div>
                             <div className="text-center">
                                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "BẠN"}</h2>
                                  <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Score: {userScore}</div>
+                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Điểm: {userScore}</div>
                                 </div>
                             </div>
                         </div>
@@ -877,12 +877,12 @@ const GamePlayView = () => {
                                         />
                                     </div>
                                 </div>
-                                <div className="absolute -bottom-4 -left-4 px-4 py-2 bg-red-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">OPPONENT</div>
+                                <div className="absolute -bottom-4 -left-4 px-4 py-2 bg-red-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">ĐỐI THỦ</div>
                             </div>
                             <div className="text-center">
                                 <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{opponent?.display_name || "ĐỐI THỦ"}</h2>
                                  <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Score: {opponentScore}</div>
+                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Điểm: {opponentScore}</div>
                                 </div>
                             </div>
                         </div>
@@ -913,11 +913,11 @@ const GamePlayView = () => {
                         <div className="text-7xl md:text-[12rem] font-black italic text-white/[0.03] animate-pulse text-center leading-[0.8]">
                             {isEndOfRound ? (
                                 <div className="flex flex-col items-center">
-                                    <span>ROUND {currentRound}</span>
-                                    <span className="text-4xl md:text-6xl mt-6 opacity-30 tracking-[0.3em]">DONE</span>
+                                    <span>HIỆP {currentRound}</span>
+                                    <span className="text-4xl md:text-6xl mt-6 opacity-30 tracking-[0.3em]">HOÀN THÀNH</span>
                                 </div>
                             ) : (
-                                'NEXT QUESTION'
+                                'CÂU TIẾP THEO'
                             )}
                         </div>
                     </div>
@@ -972,7 +972,7 @@ const GamePlayView = () => {
                             setScores.user > setScores.opponent ? 'text-blue-500' : 
                             setScores.user < setScores.opponent ? 'text-red-500' : 'text-white'
                         }`}>
-                            {setScores.user > setScores.opponent ? 'VICTORY' : setScores.user === setScores.opponent ? 'DRAW' : 'DEFEAT'}
+                            {setScores.user > setScores.opponent ? 'CHIẾN THẮNG' : setScores.user === setScores.opponent ? 'HÒA' : 'THẤT BẠI'}
                         </h1>
                         <p className="text-gray-500 font-bold uppercase tracking-widest mt-4 italic text-sm">Trận đấu đã kết thúc</p>
                     </div>
@@ -986,16 +986,16 @@ const GamePlayView = () => {
                              </div>
 
                              <div className="relative z-10 flex flex-col items-center">
-                                 <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
+                                  <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
                                      <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
                                  </div>
-                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Your Score</div>
+                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Điểm của bạn</div>
                                  <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{userScore}</div>
                                  <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${userScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
-                                     Points: {roundScoresRecord.map(r => r.user).join('/')}
+                                     Điểm chi tiết: {roundScoresRecord.map(r => r.user).join('/')}
                                  </div>
                                  <div className="mt-1 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                                     Rating: {(roundScoresRecord.reduce((a, b) => a + b.user, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
+                                     Hiệu suất: {(roundScoresRecord.reduce((a, b) => a + b.user, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
                                  </div>
                              </div>
                          </div>
@@ -1008,16 +1008,16 @@ const GamePlayView = () => {
                              </div>
 
                              <div className="relative z-10 flex flex-col items-center">
-                                 <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
+                                  <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
                                      <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
                                  </div>
-                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Opponent Score</div>
+                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Điểm đối thủ</div>
                                  <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{opponentScore}</div>
                                  <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${opponentScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
-                                     Points: {roundScoresRecord.map(r => r.opponent).join('/')}
+                                     Điểm chi tiết: {roundScoresRecord.map(r => r.opponent).join('/')}
                                  </div>
                                  <div className="mt-1 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                                     Rating: {(roundScoresRecord.reduce((a, b) => a + b.opponent, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
+                                     Hiệu suất: {(roundScoresRecord.reduce((a, b) => a + b.opponent, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
                                  </div>
                              </div>
                          </div>
@@ -1087,7 +1087,7 @@ const GamePlayView = () => {
                 <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-in fade-in duration-700">
                     <div className="flex flex-col items-center gap-4 animate-in zoom-in-50 duration-500">
                          <div className="w-20 h-1 bg-white/20 rounded-full mb-4"></div>
-                         <h1 className="text-6xl md:text-9xl font-black text-white tracking-[0.2em] italic">ROUND {currentRound}</h1>
+                         <h1 className="text-6xl md:text-9xl font-black text-white tracking-[0.2em] italic">HIỆP {currentRound}</h1>
                          <div className="w-20 h-1 bg-white/20 rounded-full mt-4"></div>
                     </div>
                 </div>
