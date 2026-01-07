@@ -63,19 +63,19 @@ const ArenaLobbyView = () => {
                 return {
                     title: 'Đấu hạng (Ranked)',
                     icon: Bookmark,
-                    color: 'text-fuchsia-400',
-                    bg: 'from-fuchsia-600/20 to-purple-600/20',
-                    border: 'border-fuchsia-500/30',
-                    format: 'Bo5',
-                    questions: '10 câu/Round'
-                };
-            case 'blitzmatch':
-                return {
-                    title: 'Chớp nhoáng (Blitzmatch)',
-                    icon: Zap,
                     color: 'text-red-400',
                     bg: 'from-red-600/20 to-orange-600/20',
                     border: 'border-red-500/30',
+                    format: 'Bo5',
+                    questions: '10 câu/Round'
+                };
+            case 'bot':
+                return {
+                    title: 'Đấu máy (BOT)',
+                    icon: Zap,
+                    color: 'text-blue-400',
+                    bg: 'from-blue-600/20 to-cyan-600/20',
+                    border: 'border-blue-500/30',
                     format: 'Bo3',
                     questions: '5 câu/Round'
                 };
@@ -83,9 +83,9 @@ const ArenaLobbyView = () => {
                 return {
                     title: 'Đấu thường (Normal)',
                     icon: Swords,
-                    color: 'text-blue-400',
-                    bg: 'from-blue-600/20 to-cyan-600/20',
-                    border: 'border-blue-500/30',
+                    color: 'text-purple-400',
+                    bg: 'from-purple-600/20 to-fuchsia-600/20',
+                    border: 'border-purple-500/30',
                     format: 'Bo3',
                     questions: '10 câu/Round'
                 };
@@ -98,14 +98,53 @@ const ArenaLobbyView = () => {
 
     // --- INTERNAL INITIALIZATION SAFEGUARD ---
     const [isInternalInit, setIsInternalInit] = useState(true);
+    const [showIntro, setShowIntro] = useState(true);
+    const [introExiting, setIntroExiting] = useState(false);
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsInternalInit(false), 800);
-        return () => clearTimeout(timer);
+        // Only trigger exit if we have profile data (or timeout fallback)
+        if (profile) {
+             const minLoadTime = 1500; // Minimum time to show "Initializing" animation
+             const now = Date.now();
+             const renderTime = (window as any)._renderStartTime || now; // heuristic
+             const elapsed = now - renderTime;
+             const remaining = Math.max(0, minLoadTime - elapsed);
+
+             const timer = setTimeout(() => {
+                 // 1. Reveal Real Data (Behind Opaque Overlay)
+                 setIsInternalInit(false);
+                 
+                 // 2. Schedule Exit Animation after a brief paint delay
+                 setTimeout(() => {
+                     setIntroExiting(true);
+                 }, 200); 
+             }, remaining);
+
+             return () => clearTimeout(timer);
+        }
+    }, [profile]);
+
+    // Force exit after 5s max (fallback)
+    useEffect(() => {
+        (window as any)._renderStartTime = Date.now();
+         const t = setTimeout(() => {
+             setIsInternalInit(false);
+             setTimeout(() => setIntroExiting(true), 100);
+         }, 5000);
+         return () => clearTimeout(t);
     }, []);
+
+    // Remove from DOM after exit animation
+    useEffect(() => {
+        if (introExiting) {
+             const t = setTimeout(() => setShowIntro(false), 1000);
+             return () => clearTimeout(t);
+        }
+    }, [introExiting]);
 
     // --- LOADING STATE ---
     // Wait for the profile and internal init to load to avoid sequential flickering
+    // CRITICAL: isProfileLoading must be FALSE when the overlay fades.
     const isProfileLoading = !profile || isInternalInit;
 
     // --- SKELETON COMPONENTS ---
@@ -127,6 +166,25 @@ const ArenaLobbyView = () => {
         if (!user?.id) return;
         await supabase.from('matchmaking').delete().eq('user_id', user.id);
     }, [user?.id]);
+
+    // --- BOT MODE: PRE-POPULATE OPPONENT ---
+    useEffect(() => {
+        if (mode.toLowerCase() === 'bot' && user && profile) {
+            // Define BOT opponent data
+            const BOT_OPPONENT: Participant = {
+                id: 'bot-ai-001',
+                display_name: 'AI Assistant',
+                avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bot-ai',
+                is_ready: true,
+                is_host: false,
+                rank: 'Diamond I'
+            };
+
+            // Pre-populate opponent (but DON'T set matchFound yet - keep button visible)
+            setOpponent(BOT_OPPONENT);
+            console.log('BOT mode: Pre-populated AI opponent');
+        }
+    }, [mode, user, profile]);
 
     // --- LEAVE ON UNMOUNT & TAB CLOSE ---
     useEffect(() => {
@@ -489,6 +547,19 @@ const ArenaLobbyView = () => {
     const handleFindMatch = async () => {
         if (!user || roomId) return;
         
+        // BOT MODE: Skip matchmaking, go straight to game
+        if (mode.toLowerCase() === 'bot') {
+            console.log('BOT mode: Starting game directly');
+            isNavigatingToGame.current = true;
+            setIsGameWarping(true);
+            
+            // Navigate to gameplay with BOT room ID
+            setTimeout(() => {
+                navigate(`/gameplay?mode=bot&roomId=bot-local-${user.id}`);
+            }, 1500); // Small delay for warp animation
+            return;
+        }
+
         setSearching(true);
         setMatchFound(false);
         setTimer(0);
@@ -542,6 +613,10 @@ const ArenaLobbyView = () => {
     // Helper to get opponent (for UI display)
     const opponentPlayer = participants.find(p => p.id !== user?.id);
 
+    // --- EFFECT STATES ---
+    const [showMatchFoundEffect, setShowMatchFoundEffect] = useState(false);
+    const [isGameWarping, setIsGameWarping] = useState(false);
+
     // Sync local opponent state
     useEffect(() => {
         if (opponentPlayer) {
@@ -555,6 +630,11 @@ const ArenaLobbyView = () => {
                     is_host: opponentPlayer.is_host || false
                 });
                 setMatchFound(true);
+                // Trigger Effect only if it's a new find (not just re-render)
+                if (!matchFound) {
+                    setShowMatchFoundEffect(true);
+                    setTimeout(() => setShowMatchFoundEffect(false), 2500); 
+                }
             }, 0);
             return () => clearTimeout(t);
         } else if (roomId && mode === 'custom') {
@@ -564,7 +644,15 @@ const ArenaLobbyView = () => {
             }, 0);
             return () => clearTimeout(t);
         }
-    }, [opponentPlayer, roomId, mode]);
+    }, [opponentPlayer, roomId, mode, matchFound]);
+
+    // Handle Game Start Animation intercept
+    useEffect(() => {
+        // Trigger Warp on 'preparing' (Guest) or 'starting' (Host) or 'playing' (Both)
+        if (isStarting || roomData?.status === 'preparing' || (roomData?.status === 'playing' && !isGameWarping)) {
+             setIsGameWarping(true);
+        }
+    }, [isStarting, roomData?.status, isGameWarping]);
 
     // --- MATCHMAKING SUBSCRIPTION ---
     useEffect(() => {
@@ -622,8 +710,58 @@ const ArenaLobbyView = () => {
 
     return (
         <div className="fixed inset-0 z-[100] bg-neutral-950 text-white p-4 h-screen overflow-hidden flex flex-col">
-            {/* Starting Overlay (Shared) */}
-            {isSharedPreparing && (
+            
+            {/* --- MATCH FOUND EFFECT --- */}
+            {showMatchFoundEffect && (
+                <div className="fixed inset-0 z-[1000] bg-red-600/90 mix-blend-hard-light flex items-center justify-center animate-out fade-out duration-500 delay-[2000ms] fill-mode-forwards pointer-events-none">
+                    <div className="flex flex-col items-center animate-in zoom-in-50 duration-300">
+                        <Swords size={120} className="text-white animate-bounce" />
+                        <h1 className="text-6xl font-black text-white italic tracking-tighter uppercase mt-4 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] animate-pulse">
+                            Tìm thấy đối thủ!
+                        </h1>
+                        <div className="w-[120%] h-2 bg-white mt-8 animate-[ping_1s_linear_infinite]"></div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- GAME WARP EFFECT --- */}
+            {isGameWarping && (
+                <div className="fixed inset-0 z-[2000] bg-black flex flex-col items-center justify-center animate-in fade-in duration-500">
+                     <div className="w-full h-full absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-black"></div>
+                     <div className="relative z-10 flex flex-col items-center">
+                         <div className="w-40 h-40 rounded-full border-8 border-blue-500 border-t-white animate-spin duration-700 shadow-[0_0_100px_rgba(59,130,246,0.5)]"></div>
+                         <h2 className="text-4xl font-black text-white uppercase tracking-[0.5em] mt-12 animate-pulse">
+                             ĐANG TIẾN VÀO ĐẤU TRƯỜNG
+                         </h2>
+                         <div className="text-blue-400 font-mono mt-4 animate-bounce">
+                             ĐANG ĐỒNG BỘ GAME...
+                         </div>
+                     </div>
+                </div>
+            )}
+
+            {/* --- ENTRANCE ANIMATION OVERLAY --- */}
+            {showIntro && (
+                <div className={`fixed inset-0 z-[999] bg-neutral-950 flex flex-col items-center justify-center transition-all duration-1000 ease-in-out fill-mode-forwards ${introExiting ? 'opacity-0 translate-y-[-100%]' : 'opacity-100 translate-y-0'}`}>
+                     <div className="relative">
+                         <div className={`w-32 h-32 rounded-full border-4 ${details.border} border-t-transparent animate-spin`}></div>
+                         <div className="absolute inset-0 flex items-center justify-center">
+                             <details.icon size={40} className={`${details.color} animate-pulse`} />
+                         </div>
+                     </div>
+                     <h2 className="text-3xl font-black text-white uppercase tracking-[0.3em] mt-8 animate-pulse">
+                         Vào phòng đấu
+                     </h2>
+                     <div className="flex gap-2 mt-4">
+                         <div className={`w-3 h-3 rounded-full ${details.color.replace('text-', 'bg-')} animate-bounce delay-0`}></div>
+                         <div className={`w-3 h-3 rounded-full ${details.color.replace('text-', 'bg-')} animate-bounce delay-100`}></div>
+                         <div className={`w-3 h-3 rounded-full ${details.color.replace('text-', 'bg-')} animate-bounce delay-200`}></div>
+                     </div>
+                </div>
+            )}
+
+            {/* Starting Overlay (Shared) - Only show if NOT warping (Fallback) */}
+            {isSharedPreparing && !isGameWarping && (
                 <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300 text-center px-6">
                     <div className="relative mb-8">
                          <div className="w-24 h-24 rounded-full border-4 border-fuchsia-500/20 border-t-fuchsia-500 animate-spin"></div>
@@ -643,7 +781,7 @@ const ArenaLobbyView = () => {
                         className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors group"
                     >
                         <X size={20} className="group-hover:rotate-90 transition-transform" />
-                        <span className="font-bold text-sm uppercase tracking-wider">Quay lại đấu trường</span>
+                        <span className="font-bold text-sm uppercase tracking-wider">Quay lại sảnh chính</span>
                     </button>
                 ) : (
                     <div /> // Spacer for custom rooms
@@ -663,7 +801,7 @@ const ArenaLobbyView = () => {
                 {/* MATCH INFO HEADER (Restored - Vertical Banner Style requires this) */}
                 <div className="flex items-center gap-6 mb-12 animate-in slide-in-from-top-4 duration-500">
                      <div className={`flex flex-col items-end`}>
-                         <div className={`text-xs font-bold uppercase tracking-widest ${details.color} mb-1 opacity-80`}>Mode</div>
+                         <div className={`text-xs font-bold uppercase tracking-widest ${details.color} mb-1 opacity-80`}>Chế độ</div>
                          <div className="flex items-center gap-2">
                              <details.icon size={20} className={details.color} />
                              <span className="text-2xl font-black uppercase tracking-tight text-white">{mode}</span>
@@ -671,7 +809,7 @@ const ArenaLobbyView = () => {
                      </div>
                      <div className="w-px h-10 bg-white/10"></div>
                      <div className="flex flex-col items-start">
-                         <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Details</div>
+                         <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Thể thức thi đấu</div>
                          <div className="flex items-center gap-3 text-sm font-bold text-gray-300">
                              {isInitialLoading ? (
                                 <div className="flex gap-2">
@@ -691,7 +829,7 @@ const ArenaLobbyView = () => {
                             <div className="w-px h-10 bg-white/10"></div>
                             <div className="flex flex-col items-start group cursor-pointer" onClick={handleCopyCode}>
                                 <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1 flex items-center gap-1">
-                                    Room Code {copied && <Check size={12} className="text-green-500" />}
+                                    Mã phòng {copied && <Check size={12} className="text-green-500" />}
                                 </div>
                                 <div className="text-2xl font-mono font-black text-fuchsia-400 tracking-widest group-hover:text-fuchsia-300 transition-colors">
                                     {isInitialLoading ? <SkeletonItem className="h-8 w-24 mt-1" /> : roomData?.code}
@@ -752,7 +890,7 @@ const ArenaLobbyView = () => {
                                         <h2 className="text-2xl font-black text-white uppercase tracking-tight truncate mb-2">{displayName || 'You'}</h2>
                                         
                                         {/* Rank Banner */}
-                                        <div className={`w-full py-1 ${mode.toLowerCase() === 'ranked' ? 'bg-fuchsia-900/40 text-fuchsia-400 border-fuchsia-500/30' : mode.toLowerCase() === 'blitzmatch' ? 'bg-red-900/40 text-red-400 border-red-500/30' : 'bg-blue-900/40 text-blue-400 border-blue-500/30'} border rounded flex items-center justify-center gap-2`}>
+                                        <div className={`w-full py-1 ${mode.toLowerCase() === 'ranked' ? 'bg-red-900/40 text-red-400 border-red-500/30' : mode.toLowerCase() === 'bot' ? 'bg-blue-900/40 text-blue-400 border-blue-500/30' : 'bg-purple-900/40 text-purple-400 border-purple-500/30'} border rounded flex items-center justify-center gap-2`}>
                                             <span className="font-bold text-xs uppercase tracking-wider">{profile?.rank_name || 'Bronze I'}</span>
                                         </div>
                                     </>
@@ -771,8 +909,8 @@ const ArenaLobbyView = () => {
                             <div className="flex flex-col items-center relative scale-110 lg:scale-125">
                                 {/* Ambient Background Glow */}
                                 <div className={`absolute inset-0 -z-10 blur-[80px] rounded-full opacity-30 animate-pulse ${
-                                    mode.toLowerCase() === 'ranked' ? 'bg-fuchsia-500' : 
-                                    mode.toLowerCase() === 'blitzmatch' ? 'bg-red-500' : 'bg-blue-500'
+                                    mode.toLowerCase() === 'ranked' ? 'bg-red-500' : 
+                                    mode.toLowerCase() === 'bot' ? 'bg-blue-500' : 'bg-purple-500'
                                 }`}></div>
                                 
                                 {/* VS LABEL */}
@@ -800,8 +938,8 @@ const ArenaLobbyView = () => {
                                          <circle 
                                             cx="72" cy="72" r="66" 
                                             className={`fill-none transition-all duration-1000 ease-linear ${
-                                                mode.toLowerCase() === 'ranked' ? 'stroke-fuchsia-500' : 
-                                                mode.toLowerCase() === 'blitzmatch' ? 'stroke-red-500' : 'stroke-blue-500'
+                                                mode.toLowerCase() === 'ranked' ? 'stroke-red-500' : 
+                                                mode.toLowerCase() === 'bot' ? 'stroke-blue-500' : 'stroke-purple-500'
                                             }`} 
                                             strokeWidth="4" 
                                             strokeDasharray="414.69"
@@ -817,8 +955,8 @@ const ArenaLobbyView = () => {
 
                                     {/* Scanning Ornament (Slow rotate) */}
                                     <div className={`absolute inset-[-10px] border-t-2 border-l-2 rounded-full opacity-20 animate-[spin_4s_linear_infinite] ${
-                                        mode.toLowerCase() === 'ranked' ? 'border-fuchsia-500' : 
-                                        mode.toLowerCase() === 'blitzmatch' ? 'border-red-500' : 'border-blue-500'
+                                        mode.toLowerCase() === 'ranked' ? 'border-red-500' : 
+                                        mode.toLowerCase() === 'bot' ? 'border-blue-500' : 'border-purple-500'
                                     }`}></div>
                                 </div>
                             </div>
@@ -864,7 +1002,7 @@ const ArenaLobbyView = () => {
                     <div className="relative group w-64 h-[28rem] shrink-0 transition-transform duration-500 hover:scale-[1.02]">
                          {matchFound && opponent ? (
                             // REAL OPPONENT BANNER
-                            <div className={`absolute inset-0 border-y-[6px] ${mode.toLowerCase() === 'ranked' ? 'border-fuchsia-600' : mode.toLowerCase() === 'blitzmatch' ? 'border-red-600' : 'border-blue-600'} bg-neutral-900/50 backdrop-blur-sm overflow-hidden flex flex-col animate-in slide-in-from-right-12 duration-500`}>
+                            <div className={`absolute inset-0 border-y-[6px] ${mode.toLowerCase() === 'ranked' ? 'border-red-600' : mode.toLowerCase() === 'bot' ? 'border-blue-600' : 'border-purple-600'} bg-neutral-900/50 backdrop-blur-sm overflow-hidden flex flex-col animate-in slide-in-from-right-12 duration-500`}>
                                 {/* Inner Accent Lines */}
                                 <div className="absolute top-2 left-2 right-2 h-[1px] bg-white/20 z-20"></div>
                                 <div className="absolute bottom-2 left-2 right-2 h-[1px] bg-white/20 z-20"></div>
@@ -894,7 +1032,7 @@ const ArenaLobbyView = () => {
                                     <h2 className="text-2xl font-black text-white uppercase tracking-tight truncate mb-2 text-right">{opponent?.display_name}</h2>
                                     
                                      {/* Rank Banner */}
-                                    <div className={`w-full py-1 ${mode.toLowerCase() === 'ranked' ? 'bg-fuchsia-900/40 text-fuchsia-400 border-fuchsia-500/30' : mode.toLowerCase() === 'blitzmatch' ? 'bg-red-900/40 text-red-400 border-red-500/30' : 'bg-blue-900/40 text-blue-400 border-blue-500/30'} border rounded flex items-center justify-center gap-2`}>
+                                    <div className={`w-full py-1 ${mode.toLowerCase() === 'ranked' ? 'bg-red-900/40 text-red-400 border-red-500/30' : mode.toLowerCase() === 'bot' ? 'bg-blue-900/40 text-blue-400 border-blue-500/30' : 'bg-purple-900/40 text-purple-400 border-purple-500/30'} border rounded flex items-center justify-center gap-2`}>
                                          <span className="font-bold text-xs uppercase tracking-wider">{opponent?.rank || 'Bronze I'}</span>
                                     </div>
                                 </div>
@@ -1066,11 +1204,11 @@ const ArenaLobbyView = () => {
                                     <button 
                                         onClick={handleFindMatch}
                                         className={`w-full py-6 bg-gradient-to-r ${
-                                            mode.toLowerCase() === 'blitzmatch' 
-                                            ? 'from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(220,38,38,0.7)]'
+                                            mode.toLowerCase() === 'bot' 
+                                            ? 'from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 shadow-[0_10px_40px_-10px_rgba(37,99,235,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(37,99,235,0.7)]'
                                             : mode.toLowerCase() === 'ranked'
-                                                ? 'from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 shadow-[0_10px_40px_-10px_rgba(192,38,211,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(192,38,211,0.7)]'
-                                                : 'from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_10px_40px_-10px_rgba(37,99,235,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(37,99,235,0.7)]'
+                                                ? 'from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(220,38,38,0.7)]'
+                                                : 'from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 shadow-[0_10px_40px_-10px_rgba(168,85,247,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(168,85,247,0.7)]'
                                         } text-white font-black uppercase tracking-[0.25em] hover:-translate-y-1 active:translate-y-0 active:scale-95 transition-all text-xl group relative overflow-hidden`}
                                     >
                                         <span className="relative z-10 flex items-center justify-center gap-3">
@@ -1087,11 +1225,11 @@ const ArenaLobbyView = () => {
             
             {/* Top Glow RESTORED - Dynamic per Mode */}
             <div className={`absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full blur-[120px] pointer-events-none opacity-50 z-0 transition-colors duration-1000 ${
-                mode.toLowerCase() === 'blitzmatch' 
-                ? 'bg-red-600/30 animate-pulse' 
+                mode.toLowerCase() === 'bot' 
+                ? 'bg-blue-600/30 animate-pulse' 
                 : mode.toLowerCase() === 'ranked'
-                    ? 'bg-fuchsia-600/20'
-                    : 'bg-blue-600/20'
+                    ? 'bg-red-600/20'
+                    : 'bg-purple-600/20'
             }`}></div>
         </div>
     );

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  X, Shield, ChevronRight, Check, Zap
+  X, Shield, ChevronRight, Check, Zap,
+  Coins
 } from 'lucide-react';
 import { CLAN_ICONS, CLAN_COLORS } from '../../pages/dashboard/clanConstants';
 
@@ -244,7 +245,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div>
                       <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Phí thành lập</div>
-                      <div className="text-xl font-black text-white">1,000 🪙</div>
+                      <div className="text-xl font-black text-white">1,000 <Coins size={24} className="inline text-yellow-500" /></div>
                    </div>
                 </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext, Link, useNavigate } from 'react-router-dom';
 import { supabase } from "../../lib/supabase";
-import { Swords, Trophy, Users, Zap, Star, Play, Lock, Bookmark, X, Loader2 } from 'lucide-react';
+import { Swords, Trophy, Users, Zap, Play, Lock, Shield, X, Loader2, Bookmark } from 'lucide-react';
 import { ArenaPageSkeleton } from '../../components/LoadingSkeletons';
 import { getRankFromMMR } from '../../lib/ranking';
 
@@ -26,11 +26,20 @@ interface RoomData {
     mode: string;
 }
 
+interface DashboardContext {
+  dashboardCache: {
+    arenaRooms?: RoomData[];
+    arenaProfile?: { mmr: number | null };
+    [key: string]: unknown;
+  };
+  setDashboardCache: React.Dispatch<React.SetStateAction<any>>;
+}
+
 const ArenaView = () => {
   const navigate = useNavigate();
-  const { dashboardCache, setDashboardCache } = useOutletContext<any>();
+  const { dashboardCache, setDashboardCache } = useOutletContext<DashboardContext>();
   const [loading, setLoading] = useState(!dashboardCache.arenaRooms || !dashboardCache.arenaProfile);
-  const [profile, setProfile] = useState<any>(dashboardCache.arenaProfile || null);
+  const [profile, setProfile] = useState<{ mmr: number | null } | null>(dashboardCache.arenaProfile || null);
   const [loadingRooms, setLoadingRooms] = useState(!dashboardCache.arenaRooms);
   const [roomsList, setRoomsList] = useState<RoomData[]>(dashboardCache.arenaRooms || []);
   const [joinCode, setJoinCode] = useState("");
@@ -125,7 +134,7 @@ const ArenaView = () => {
     };
   }, []);
 
-  const handleStartMode = (mode: string) => {
+  const handleQuickMatch = (mode: string) => {
     navigate(`/dashboard/arena/lobby?mode=${mode}`);
   };
 
@@ -262,48 +271,56 @@ const ArenaView = () => {
     <div className="animate-fade-in-up pb-10 relative">
       {/* --- CREATE ROOM MODAL --- */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="bg-neutral-950 border border-fuchsia-500/30 rounded-lg w-full max-w-lg overflow-hidden shadow-[0_0_50px_rgba(217,70,239,0.1)] relative animate-in zoom-in-95 duration-200">
                 
+                {/* HUD Corners */}
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-fuchsia-500/50" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-fuchsia-500/50" />
+
                 {/* Modal Header */}
-                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-neutral-900/50">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Zap className="text-fuchsia-500" size={20} /> Thiết lập phòng đấu
+                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-neutral-900/40 relative">
+                    <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent" />
+                    <h3 className="text-2xl font-black text-white flex items-center gap-3 uppercase italic tracking-tighter">
+                        <Zap className="text-fuchsia-500 animate-pulse" size={24} /> Tạo phòng tùy chọn
                     </h3>
-                    <button onClick={() => setIsCreateModalOpen(false)} className="text-gray-400 hover:text-white transition-colors">
-                        <X size={24} />
+                    <button onClick={() => setIsCreateModalOpen(false)} className="bg-black/40 p-2 border border-white/10 text-gray-500 hover:text-fuchsia-400 hover:border-fuchsia-500/50 transition-all active:scale-90">
+                        <X size={20} />
                     </button>
                 </div>
 
                 {/* Modal Body */}
-                <div className="p-6 space-y-6">
+                <div className="p-10 space-y-8">
                     
                     {/* Room Name */}
-                    <div className="space-y-2">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Tên phòng</label>
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                           <label className="tech-label">Tên phòng</label>
+                        </div>
                         <input 
                             type="text" 
-                            className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-fuchsia-500 transition-colors outline-none font-bold"
+                            className="w-full bg-black border border-white/5 px-5 py-4 text-white focus:border-fuchsia-500/50 transition-all outline-none font-black text-sm uppercase tracking-widest placeholder-gray-800"
                             value={roomSettings.name}
                             onChange={(e) => setRoomSettings({...roomSettings, name: e.target.value})}
-                            placeholder="Nhập tên phòng..."
+                            placeholder="INPUT_SECTOR_ID..."
                         />
                     </div>
                     
                     {/* Input Group: Rounds Selection */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Thể thức thi đấu</label>
-                        <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-4">
+                        <label className="tech-label">Thể thức thi đấu</label>
+                        <div className="grid grid-cols-3 gap-4">
                             {[3, 5, 7].map((num) => (
                                 <button
                                     key={num}
                                     onClick={() => setRoomSettings({...roomSettings, max_rounds: num})}
-                                    className={`py-3 rounded-xl font-bold transition-all border ${
+                                    className={`py-4 transition-all border font-black uppercase text-xs tracking-[0.2em] relative overflow-hidden ${
                                         roomSettings.max_rounds === num
-                                        ? 'bg-fuchsia-600/20 border-fuchsia-500 text-fuchsia-400 shadow-[0_0_15px_rgba(192,38,211,0.2)]'
-                                        : 'bg-neutral-900 border-white/10 text-gray-400 hover:border-white/20'
+                                        ? 'bg-fuchsia-600/10 border-fuchsia-500 text-fuchsia-400 shadow-[0_0_20px_rgba(192,38,211,0.1)]'
+                                        : 'bg-black border-white/5 text-gray-600 hover:border-white/20'
                                     }`}
                                 >
+                                    {roomSettings.max_rounds === num && <div className="absolute top-0 left-0 w-1 h-3 bg-fuchsia-500" />}
                                     Bo{num}
                                 </button>
                             ))}
@@ -311,20 +328,21 @@ const ArenaView = () => {
                     </div>
 
                     {/* Input Group: Questions Selection */}
-                    <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Số câu hỏi mỗi Round</label>
-                        <div className="grid grid-cols-4 gap-3">
+                    <div className="space-y-4">
+                        <label className="tech-label">Số câu hỏi mỗi round</label>
+                        <div className="grid grid-cols-4 gap-4">
                             {[5, 7, 10, 12].map((num) => (
                                 <button
                                     key={num}
                                     onClick={() => setRoomSettings({...roomSettings, questions: num})}
-                                    className={`py-3 rounded-xl font-bold transition-all border ${
+                                    className={`py-4 transition-all border font-black uppercase text-xs tracking-[0.2em] relative overflow-hidden ${
                                         roomSettings.questions === num
-                                        ? 'bg-blue-600/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)]'
-                                        : 'bg-neutral-900 border-white/10 text-gray-400 hover:border-white/20'
+                                        ? 'bg-blue-600/10 border-blue-500 text-blue-400 shadow-[0_0_20px_rgba(37,99,235,0.1)]'
+                                        : 'bg-black border-white/5 text-gray-600 hover:border-white/20'
                                     }`}
                                 >
-                                    {num}
+                                   {roomSettings.questions === num && <div className="absolute top-0 left-0 w-1 h-3 bg-blue-500" />}
+                                    {num} Q
                                 </button>
                             ))}
                         </div>
@@ -333,20 +351,21 @@ const ArenaView = () => {
                 </div>
 
                 {/* Modal Footer */}
-                <div className="p-6 border-t border-white/5 bg-neutral-900/30 flex justify-end gap-3">
+                <div className="p-8 bg-black/60 flex justify-end gap-5">
                     <button 
                         onClick={() => setIsCreateModalOpen(false)}
-                        className="px-5 py-2.5 rounded-xl font-bold text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+                        className="tech-label hover:text-white transition-colors px-4"
                     >
-                        Hủy bỏ
+                        Hủy
                     </button>
                     <button 
                         onClick={handleConfirmCreate}
                         disabled={creating || !roomSettings.name}
-                        className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-bold shadow-lg shadow-fuchsia-900/20 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-10 py-5 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black uppercase tracking-[0.3em] text-[11px] flex items-center gap-3 transition-all active:translate-y-1 disabled:opacity-20 disabled:cursor-not-allowed group/btn"
+                        style={{ clipPath: 'polygon(0 0, 100% 0, 90% 100%, 0% 100%)' }}
                     >
-                        {creating ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} />}
-                        {creating ? 'Đang tạo...' : 'Tạo phòng ngay'}
+                        {creating ? <Loader2 className="animate-spin text-white" size={16} /> : <Zap size={16} />}
+                        {creating ? 'Bắt đầu...' : 'Bắt đầu'}
                     </button>
                 </div>
 
@@ -385,67 +404,54 @@ const ArenaView = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
-        <div>
-           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-             Đấu Trường (Arena)
+      {/* Header - Tech Sector Style */}
+      <div className="mb-12 flex flex-col md:flex-row justify-between items-end gap-6 relative">
+        <div className="relative z-10 w-full md:w-auto">
+           <div className="inline-flex items-center gap-2 px-3 py-1 bg-fuchsia-500/10 border border-fuchsia-500/20 mb-4 rounded-sm">
+              <span className="w-1 h-3 bg-fuchsia-500 animate-pulse"></span>
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-fuchsia-400">Combat Sector // Arena</span>
+           </div>
+           <h1 className="text-5xl font-black text-white tracking-tighter uppercase italic">
+             Đấu Trường <span className="text-fuchsia-500">MMR</span>
            </h1>
-           <p className="text-gray-400 mt-2">
-             Chọn chế độ thi đấu và khẳng định bản thân.
+           <div className="h-0.5 w-32 bg-gradient-to-r from-fuchsia-600 to-transparent mt-2"></div>
+           <p className="text-gray-500 mt-4 font-bold max-w-md text-sm leading-relaxed">
+             Nơi kỹ năng lên ngôi. Bạn đã sẵn sàng đối đầu với những đối thủ xứng tầm để chạm tay vào vinh quang?
            </p>
         </div>
         
-        <div className="flex items-center gap-4 bg-neutral-900 border border-white/10 px-4 py-2 rounded-xl">
-           <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-             <span className="text-sm font-bold text-gray-300">Online:</span>
-             <span className="text-sm font-bold text-white">1,240</span>
-           </div>
-           <div className="w-px h-4 bg-white/10"></div>
-           <div className="flex items-center gap-2">
-             <Zap size={14} className="text-yellow-500" />
-             <span className="text-sm font-bold text-gray-300">Matching:</span>
-             <span className="text-sm font-bold text-green-400">--</span>
-           </div>
-        </div>
       </div>
 
       {/* Game Modes Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Normal Mode */}
-        <ModeCard 
-          title="Đấu thường (Normal)"
-          description="Luyện tập kỹ năng, thử nghiệm chiến thuật."
-          image="https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop"
-          icon={Swords}
-          color="blue"
-          features={["Thể thức: Bo3", "Thoải mái", "Không tính Rank"]}
-          onClick={() => handleStartMode('Normal')}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+         <ModeCard 
+            title="Đấu Máy" 
+            description=" rèn luyện kỹ năng và thử nghiệm chiến thuật mới với máy." 
+            image="https://www.fightersgeneration.com/news2021/news/evo2021-crowd.JPG" 
+            icon={Zap}
+            color="blue"
+            features={['Thế thức: Bo3', 'Luyện tập', 'Không tính Rank']}
+            onClick={() => handleQuickMatch('bot')}
         />
-
-        {/* Ranked Mode */}
         <ModeCard 
-          title="Xếp hạng (Ranked)"
-          description="Leo tháp danh vọng, khẳng định đẳng cấp."
-          image="https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"
-          icon={Bookmark}
-          color="fuchsia"
-          features={["Thể thức: Bo5", "Tranh hạng", "Tính điểm MMR"]}
-          onClick={() => handleStartMode('Ranked')}
+            title="Đấu thường" 
+            description="Luyện tập kỹ năng, thử nghiệm chiến thuật." 
+            image="https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop" 
+            icon={Swords}
+            color="purple" 
+            features={['Thế thức: Bo3', 'Thoải mái', 'Không tính Rank']}
+            onClick={() => handleQuickMatch('normal')}
         />
-
-        {/* Special/Event Mode */}
         <ModeCard 
-          title="Chớp nhoáng (Blitzmatch)"
-          description="Suy nghĩ nhanh chóng-đưa ra kết quả chính xác."
-          image="https://images.unsplash.com/photo-1538481199705-c710c4e965fc?q=80&w=1965&auto=format&fit=crop"
-          icon={Zap}
-          color="red"
-          features={["Thể thức: Bo3", "Nhịp độ cao", "Limited Time"]}
-          isNew
-          onClick={() => handleStartMode('Blitzmatch')}
+            title="Đấu xếp Hạng" 
+            description="Leo tháp danh vọng, khẳng định đẳng cấp." 
+            image="https://images.unsplash.com/photo-1511512578047-dfb367046420?q=80&w=2071&auto=format&fit=crop" 
+            icon={Bookmark}
+            color="red"
+            features={['Thế thức: Bo5', 'Tranh hạng', 'Tính điểm MMR']}
+            onClick={() => handleQuickMatch('ranked')}
         />
+       
       </div>
 
       {/* Active Lobbies / Live Matches */}
@@ -586,64 +592,70 @@ interface ModeCardProps {
   description: string;
   image: string;
   icon: React.ElementType;
-  color: 'fuchsia' | 'blue' | 'red';
+  color: 'fuchsia' | 'blue' | 'red' | 'purple';
   features: string[];
-  isNew?: boolean;
   onClick: () => void;
 }
 
-const ModeCard = ({ title, description, image, icon: Icon, color, features, isNew, onClick }: ModeCardProps) => {
-  const colorClasses: Record<string, string> = {
-    fuchsia: "text-fuchsia-400 group-hover:text-fuchsia-300 bg-fuchsia-500",
-    blue: "text-blue-400 group-hover:text-blue-300 bg-blue-500",
-    red: "text-red-400 group-hover:text-red-300 bg-red-500",
+const ModeCard = ({ title, description, image, icon: Icon, color, features, onClick }: ModeCardProps) => {
+  const colorMap = {
+    fuchsia: { primary: '#d946ef', accent: 'fuchsia', gradient: 'from-fuchsia-600 to-purple-700' },
+    blue: { primary: '#3b82f6', accent: 'blue', gradient: 'from-blue-600 to-cyan-700' },
+    red: { primary: '#ef4444', accent: 'red', gradient: 'from-red-600 to-orange-700' },
+    purple: { primary: '#a855f7', accent: 'purple', gradient: 'from-purple-600 to-fuchsia-700' },
   };
 
-  const titleColors: Record<string, string> = {
-    fuchsia: "group-hover:text-fuchsia-400",
-    blue: "group-hover:text-blue-400",
-    red: "group-hover:text-red-400",
-  };
+  const style = colorMap[color];
 
   return (
-    <div className="group relative h-90 rounded-2xl overflow-hidden border border-white/10 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-      {/* Background Image */}
-      <div className="absolute inset-0">
-        <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-60 group-hover:opacity-40 " />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-transparent"></div>
+    <div 
+        onClick={onClick}
+        className="group relative h-[480px] cursor-pointer tech-card transition-all duration-500 hover:border-fuchsia-500/40"
+    >
+      {/* Background Tech Stack */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        <img src={image} alt={title} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-30 grayscale group-hover:grayscale-0" />
+        <div className="absolute inset-0 bg-neutral-950/80"></div>
+        <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
       </div>
 
-      {isNew && (
-        <div className="absolute top-4 right-4 bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg animate-bounce">
-          NEW
-        </div>
-      )}
+      {/* Cyber Scanline Loop */}
+      <div className="absolute inset-0 pointer-events-none opacity-5 group-hover:opacity-15 transition-opacity">
+          <div className="w-full h-[200%] bg-[linear-gradient(to_bottom,transparent_0,rgba(255,255,255,0.4)_50%,transparent_100%)] animate-scanline-fast" />
+      </div>
+
+      {/* Corner HUD ornaments */}
+      <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 opacity-20 border-white group-hover:border-fuchsia-500 group-hover:opacity-100 transition-all duration-500" />
+      <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 opacity-20 border-white group-hover:border-fuchsia-500 group-hover:opacity-100 transition-all duration-500" />
 
       {/* Content */}
-      <div className="absolute inset-0 p-6 flex flex-col justify-end">
-        <div className={`w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center mb-4 border border-white/10 shadow-lg ${colorClasses[color].split(' ')[0]}`}>
-          <Icon size={24} />
+      <div className="absolute inset-0 p-8 flex flex-col justify-end z-10">
+        <div className={`w-16 h-16 rounded-xl bg-black/40 border-2 border-white/5 flex items-center justify-center mb-6 shadow-2xl transition-all duration-500 group-hover:scale-110 group-hover:bg-fuchsia-600/10`} style={{ borderColor: `${style.primary}40` }}>
+          <Icon size={32} className={`text-${style.accent}-400 group-hover:text-white transition-colors`} />
         </div>
         
-        <h3 className={`text-2xl font-bold text-white mb-2 transition-colors ${titleColors[color]}`}>{title}</h3>
-        <p className="text-gray-400 text-sm mb-6 line-clamp-2 ">{description}</p>
+        <h3 className="text-3xl font-black text-white mb-3 uppercase tracking-tighter italic group-hover:translate-x-2 transition-transform duration-500">{title}</h3>
+        <p className="text-gray-500 text-sm mb-8 font-bold leading-relaxed group-hover:text-gray-300 transition-colors uppercase tracking-tight">{description}</p>
         
-        <div className="space-y-2 mb-6">
+        <div className="flex flex-col gap-3 mb-10 opacity-60 group-hover:opacity-100 transition-opacity">
           {features.map((feat: string, idx: number) => (
-            <div key={idx} className="flex items-center gap-2 text-xs text-gray-400">
-              <Star size={10} className={colorClasses[color].split(' ')[0]} /> {feat}
+            <div key={idx} className="flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rotate-45 border border-white/20" style={{ backgroundColor: style.primary }}></div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{feat}</span>
             </div>
           ))}
         </div>
 
         <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick();
-          }}
-          className={`w-full py-3  font-bold text-white bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 transition-colors flex items-center justify-center gap-2 group-hover:bg-gradient-to-r ${color === 'fuchsia' ? 'from-fuchsia-600 to-purple-600' : color === 'red' ? 'from-red-600 to-orange-600' : 'from-blue-600 to-cyan-600'}`}
+          className="relative w-full py-5 overflow-hidden group/btn"
+          style={{ clipPath: 'polygon(0 0, 100% 0, 92% 100%, 8% 100%)' }}
         >
-          <Play size={16} fill="currentColor" /> Chơi ngay
+          <div className={`absolute inset-0 bg-neutral-900 border-x border-b border-fuchsia-500/20 active:translate-y-0.5 transition-all`} />
+          <div className={`absolute inset-0 bg-gradient-to-r ${style.gradient} opacity-0 group-hover/btn:opacity-100 transition-opacity duration-500`} />
+          <span className="relative z-10 flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.4em] text-white">
+             <Play size={14} fill="white" /> Chơi ngay
+          </span>
         </button>
       </div>
     </div>
@@ -665,30 +677,61 @@ const LobbyRow = ({ name, mode, playerCount, isPrivate, onClick }: LobbyRowProps
   return (
     <div 
       onClick={isFull ? undefined : onClick}
-      className={`grid grid-cols-12 gap-4 p-4 items-center transition-colors group ${isFull ? 'bg-black/20 cursor-not-allowed opacity-60' : 'hover:bg-white/5 cursor-pointer'}`}
+      className={`relative group h-20 overflow-hidden border-b border-white/5 transition-all ${isFull ? 'opacity-50 grayscale cursor-not-allowed' : 'cursor-pointer hover:bg-fuchsia-600/5 hover:border-fuchsia-500/20'}`}
     >
-      <div className="col-span-5 flex items-center gap-3">
-        {isPrivate ? <Lock size={14} className="text-red-400" /> : <div className="w-3.5" />}
-        <span className="font-bold text-gray-200 group-hover:text-white truncate">{name}</span>
+      {/* Hover Highlight Overlay */}
+      {!isFull && <div className="absolute inset-0 bg-gradient-to-r from-fuchsia-600/0 via-fuchsia-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />}
+      
+      <div className="absolute inset-0 flex items-center px-6 gap-6 z-10">
+        <div className="w-10 h-10 bg-neutral-900 border border-white/10 flex items-center justify-center relative shadow-inner group-hover:border-fuchsia-500/40 transition-colors">
+            {isPrivate ? <Lock size={16} className="text-red-400" /> : <Shield size={16} className="text-gray-600 group-hover:text-fuchsia-400" />}
+            {/* Tech Corner Brackets */}
+            <div className="absolute top-0 left-0 w-1.5 h-1.5 border-t border-l border-white/20" />
+            <div className="absolute bottom-0 right-0 w-1.5 h-1.5 border-b border-r border-white/20" />
+        </div>
+        
+        <div className="flex-1">
+          <div className="font-black text-sm uppercase tracking-tight text-white group-hover:text-fuchsia-400 transition-colors">{name}</div>
+          <div className="flex items-center gap-3 mt-0.5">
+             <span className="tech-label opacity-60">Status:</span>
+             <span className={`text-[10px] font-black uppercase ${isFull ? 'text-red-500' : 'text-green-500'}`}>{isFull ? 'Active Match' : 'Ready to Join'}</span>
+          </div>
+        </div>
+
+        <div className="w-24 text-center">
+          <div className="tech-label mb-1">Format</div>
+          <div className="text-xs font-black text-gray-300 italic uppercase">{mode}</div>
+        </div>
+
+        <div className="w-32 text-center">
+          <div className="tech-label mb-1">Participants</div>
+          <div className="flex items-center justify-center gap-1.5">
+             <div className={`w-2 h-2 rounded-sm rotate-45 ${playerCount >= 1 ? 'bg-fuchsia-500 shadow-[0_0_8px_#d946ef]' : 'bg-white/10'}`} />
+             <div className={`w-2 h-2 rounded-sm rotate-45 ${playerCount >= 2 ? 'bg-fuchsia-500 shadow-[0_0_8px_#d946ef]' : 'bg-white/10'}`} />
+             <span className="text-sm font-black text-white ml-2">{playerCount}/2</span>
+          </div>
+        </div>
+
+        <div className="w-32 text-right">
+           <button 
+              disabled={isFull}
+              className={`relative px-6 py-2 overflow-hidden transition-all group/btn ${isFull ? 'opacity-50' : 'active:scale-95'}`}
+           >
+             <div className={`absolute inset-0 bg-neutral-900 border border-white/10 group-hover:border-fuchsia-500/50 transition-colors`} />
+             {!isFull && <div className="absolute inset-0 bg-fuchsia-600 opacity-0 group-hover/btn:opacity-100 transition-opacity" style={{ clipPath: 'polygon(0 0, 100% 0, 90% 100%, 0% 100%)' }} />}
+             <span className={`relative z-10 text-[10px] font-black uppercase tracking-[0.2em] ${isFull ? 'text-gray-600' : 'text-fuchsia-400 group-hover/btn:text-white'}`}>
+                {isFull ? 'Locked' : 'Access'}
+             </span>
+           </button>
+        </div>
       </div>
-      <div className="col-span-2 text-center">
-        <span className="text-xs font-bold px-2 py-1 rounded bg-white/5 text-gray-300 border border-white/5">{mode}</span>
-      </div>
-      <div className={`col-span-2 text-center text-sm font-black tracking-tighter ${isFull ? 'text-gray-500' : 'text-fuchsia-500'}`}>
-        {playerCount}/2
-      </div>
-      <div className="col-span-3 text-right">
-         <button 
-            disabled={isFull}
-            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all border ${
-                isFull 
-                ? 'bg-neutral-800 text-gray-500 border-white/5' 
-                : 'bg-white/5 hover:bg-fuchsia-600 hover:text-white text-fuchsia-400 border-white/10 hover:border-fuchsia-500'
-            }`}
-         >
-           {isFull ? 'Đã đầy' : 'Tham gia'}
-         </button>
-      </div>
+
+      {/* Hover Scannline */}
+      {!isFull && (
+        <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-5 transition-opacity">
+            <div className="w-full h-[200%] bg-[linear-gradient(to_bottom,transparent_0,rgba(255,255,255,0.4)_50%,transparent_100%)] animate-scanline-fast" />
+        </div>
+      )}
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Swords, TrendingUp, Clock, Users, Bookmark } from 'lucide-react';
+import { Swords, TrendingUp, Clock, Bookmark, Trophy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OverviewPageSkeleton } from '../../components/LoadingSkeletons';
 import { supabase } from '../../lib/supabase';
@@ -15,21 +15,43 @@ interface Profile {
   mmr: number | null;
 }
 
+interface MatchData {
+  id: string;
+  mode: string;
+  result: string;
+  score_user: number;
+  score_opponent: number;
+  played_at: string;
+  round_scores?: number[];
+  mmr_change?: number;
+}
+
+interface DashboardCacheType {
+  overviewTopUsers?: Profile[];
+  [key: string]: unknown;
+}
+
+interface DashboardContext {
+  user: { id: string } | null;
+  profile: Profile | null;
+  dashboardCache: DashboardCacheType;
+  setDashboardCache: React.Dispatch<React.SetStateAction<DashboardCacheType>>;
+}
+
 const DashboardOverview = () => {
-  const { dashboardCache, setDashboardCache } = useOutletContext<any>();
+  const { dashboardCache, setDashboardCache, user, profile } = useOutletContext<DashboardContext>();
   const [loading, setLoading] = useState(true); // Always show loading on page visit
   const [topUsers, setTopUsers] = useState<Profile[]>(dashboardCache.overviewTopUsers || []);
   const [userStats, setUserStats] = useState({
       totalMatches: 0,
       totalWins: 0,
       currentMMR: 0,
-      recentMatches: [] as any[]
+      recentMatches: [] as MatchData[]
   });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
              // 1. Fetch Profile for MMR
              const { data: profile } = await supabase.from('profiles').select('mmr').eq('id', user.id).single();
@@ -60,7 +82,7 @@ const DashboardOverview = () => {
 
         if (data) {
           setTopUsers(data);
-          setDashboardCache((prev: any) => ({ ...prev, overviewTopUsers: data }));
+          setDashboardCache((prev) => ({ ...prev, overviewTopUsers: data }));
         }
         setLoading(false);
       } catch (err) {
@@ -70,7 +92,7 @@ const DashboardOverview = () => {
     };
 
     fetchData();
-  }, [setDashboardCache]);
+  }, [setDashboardCache, user]);
 
   const winRate = userStats.totalMatches > 0 ? Math.round((userStats.totalWins / userStats.totalMatches) * 100) : 0;
   const rankInfo = getRankFromMMR(userStats.currentMMR);
@@ -79,11 +101,46 @@ const DashboardOverview = () => {
 
   return (
     <>
-      {/* Welcome Section */}
-      <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
-        <div>
-          <h1 className="text-3xl font-bold mb-1">Bắt đầu hành trình của bạn!</h1>
-          <p className="text-gray-400">Hôm nay là một ngày tuyệt vời để leo hạng.</p>
+      {/* Welcome Section - Tech Hero */}
+      <div className="mb-10 relative group">
+        {/* Outer Tech Frame */}
+        <div className="absolute inset-0 bg-neutral-900 border border-white/5 rounded-3xl overflow-hidden">
+          <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
+          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent"></div>
+          {/* Cyber Scanline Loop */}
+          <div className="absolute inset-0 pointer-events-none opacity-5">
+              <div className="w-full h-[200%] bg-[linear-gradient(to_bottom,transparent_0,rgba(217,70,239,0.3)_50%,transparent_100%)] animate-scanline-fast" />
+          </div>
+        </div>
+        
+        <div className="relative z-10 p-10 flex flex-col md:flex-row justify-between items-center gap-6 overflow-hidden">
+          {/* Corner HUD decorations */}
+          <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-fuchsia-500 opacity-20"></div>
+          <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-fuchsia-500 opacity-20"></div>
+          <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-fuchsia-500 opacity-20"></div>
+          <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-fuchsia-500 opacity-20"></div>
+
+          <div className="text-center md:text-left">
+            <div className="flex items-center gap-3 mb-4 justify-center md:justify-start">
+               <div className="h-[1px] w-8 bg-fuchsia-500/50"></div>
+               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-fuchsia-500">System Online</span>
+               <div className="h-[1px] w-8 bg-fuchsia-500/50"></div>
+            </div>
+            <h1 className="text-4xl md:text-5xl font-black text-white mb-3 tracking-tighter uppercase italic">
+               Bắt đầu <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 to-purple-400">hành trình</span>
+            </h1>
+            <p className="text-gray-400 font-bold max-w-lg leading-relaxed text-sm">
+              Chào mừng trở lại, <span className="text-white">{profile?.display_name || "Chiến binh"}</span>. Dữ liệu hệ thống đã sẵn sàng cho cuộc chinh phục tiếp theo của bạn.
+            </p>
+          </div>
+          
+          <div className="flex flex-col items-center">
+             <div className="relative p-1">
+                <div className="absolute inset-0 bg-fuchsia-500 blur-2xl opacity-20 animate-pulse"></div>
+                <RankBadge mmr={userStats.currentMMR} size="lg" />
+             </div>
+             <span className="mt-4 tech-label text-fuchsia-400">{rankInfo.tier} {rankInfo.division}</span>
+          </div>
         </div>
       </div>
 
@@ -95,7 +152,6 @@ const DashboardOverview = () => {
             value={`${rankInfo.tier} ${rankInfo.division}`} 
             subValue={`${userStats.currentMMR} MMR`} 
             color="text-yellow-400" 
-            gradient="from-yellow-500/20 to-orange-500/5" 
         />
         <StatCard 
             icon={TrendingUp} 
@@ -103,7 +159,6 @@ const DashboardOverview = () => {
             value={`${userStats.totalMatches}`} 
             subValue="Đã chơi" 
             color="text-fuchsia-400" 
-            gradient="from-fuchsia-500/20 to-purple-500/5" 
         />
         <StatCard 
             icon={Clock} 
@@ -111,7 +166,6 @@ const DashboardOverview = () => {
             value={`${userStats.totalWins}`} 
             subValue="Chiến thắng" 
             color="text-blue-400" 
-            gradient="from-blue-500/20 to-cyan-500/5" 
         />
           <StatCard 
             icon={Swords} 
@@ -119,7 +173,6 @@ const DashboardOverview = () => {
             value={`${winRate}%`} 
             subValue={`${userStats.totalWins} trận thắng`} 
             color="text-green-400" 
-            gradient="from-green-500/20 to-emerald-500/5" 
         />
       </div>
 
@@ -160,12 +213,13 @@ const DashboardOverview = () => {
         <div className="space-y-8">
           
           {/* Leaderboard Widget */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Bookmark className="text-yellow-500 w-5 h-5" /> 
+          <div className="glass-panel rounded-2xl p-6 tech-border relative overflow-hidden">
+            <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
+            <h3 className="text-lg font-black text-white mb-6 flex items-center gap-2 uppercase tracking-tight relative z-10">
+              <Trophy className="text-yellow-500 w-5 h-5 shadow-[0_0_10px_rgba(234,179,8,0.5)]" /> 
               Bảng vàng Top 5
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-4 relative z-10">
               {topUsers.map((user, index) => (
                 <LeaderboardRow 
                   key={user.id} 
@@ -179,22 +233,13 @@ const DashboardOverview = () => {
                 <div className="text-center py-4 text-gray-500 italic text-sm">Chưa có dữ liệu xếp hạng</div>
               )}
             </div>
-            <Link to="/dashboard/ranking">
-            <button className="w-full mt-4 py-2 text-sm text-gray-400 border border-white/10 rounded hover:bg-white/5 hover:text-white transition-colors">
-              Xem bảng xếp hạng đầy đủ
-            </button></Link>
+            <Link to="/dashboard/ranking" className="relative z-10 block">
+              <button className="w-full mt-6 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 border border-white/5 rounded-xl hover:bg-white/5 hover:text-white transition-all">
+                Xem bảng xếp hạng đầy đủ
+              </button>
+            </Link>
           </div>
 
-          {/* Clan/Friends Active */}
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Users className="text-blue-500 w-5 h-5" /> 
-              Bạn bè Online (3)
-            </h3>
-            <div className="space-y-3">
-              <FriendRow name="Alex Johnson" status="In Lobby" avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" />
-            </div>
-          </div>
 
         </div>
       </div>
@@ -202,17 +247,28 @@ const DashboardOverview = () => {
   );
 };
 
-const StatCard = ({ icon: Icon, label, value, subValue, color, gradient }: { icon: any, label: string, value: string, subValue: string, color: string, gradient: string }) => (
-  <div className={`p-6 rounded-2xl bg-neutral-900/80 border border-white/5 relative overflow-hidden group hover:border-white/10 transition-all`}>
-    <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${gradient} rounded-full blur-[40px] -mr-10 -mt-10 transition-opacity opacity-50 group-hover:opacity-100`}></div>
-    <div className="relative z-10">
-      <div className={`w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center mb-4 ${color}`}>
-        <Icon size={24} />
-      </div>
-      <div className="text-gray-400 text-sm font-medium mb-1">{label}</div>
-      <div className="text-2xl font-bold text-white mb-1">{value}</div>
-      <div className={`text-xs ${value.includes('-') ? 'text-red-400' : 'text-green-400'}`}>{subValue}</div>
+const StatCard = ({ icon: Icon, label, value, subValue, color }: { icon: React.ElementType, label: string, value: string, subValue: string, color: string }) => (
+  <div className="tech-card p-6 group cursor-default transition-all duration-300 hover:border-fuchsia-500/30">
+    {/* Tech Notch Clip */}
+    <div className="absolute top-0 right-0 w-8 h-8 opacity-20">
+       <div className="absolute top-0 right-0 w-full h-[1px] bg-fuchsia-500"></div>
+       <div className="absolute top-0 right-0 w-[1px] h-full bg-fuchsia-500"></div>
     </div>
+
+    <div className="relative z-10">
+      <div className={`w-12 h-12 rounded-lg bg-neutral-900 border border-white/5 flex items-center justify-center mb-6 shadow-inner ${color}`}>
+        <Icon size={22} className="group-hover:scale-110 transition-transform duration-500" />
+      </div>
+      <div className="tech-label mb-2">{label}</div>
+      <div className="tech-value text-3xl mb-1 italic uppercase tracking-tighter">{value}</div>
+      <div className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${value.includes('-') || subValue.includes('0') ? 'text-gray-600' : 'text-fuchsia-400'}`}>
+        <div className="w-1 h-1 rounded-full bg-current opacity-50"></div>
+        {subValue}
+      </div>
+    </div>
+    
+    {/* Interactive Background Shimmer */}
+    <div className="absolute inset-0 bg-gradient-to-tr from-fuchsia-500/0 via-fuchsia-500/0 to-fuchsia-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
   </div>
 );
 
@@ -226,88 +282,87 @@ const MatchRow = ({ mode, result, score, time, date, roundScores, mmrChange }: {
     roundScores?: number[],
     mmrChange?: number
 }) => {
-    // Calculate Average
-    const avgScore = roundScores && roundScores.length > 0 
-        ? (roundScores.reduce((a, b) => a + b, 0) / roundScores.length).toFixed(1)
-        : null;
+    const isWin = result === 'Chiến thắng';
+    const isDraw = result === 'Hòa';
 
     return (
-        <div className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 transition-colors group relative overflow-hidden">
-            {/* Left: Result & Time */}
-            <div className="flex items-center gap-4 min-w-[180px]">
-                 <div className={`w-1.5 h-12 rounded-full ${result === 'Chiến thắng' ? 'bg-green-500' : (result === 'Hòa' ? 'bg-yellow-500' : 'bg-red-500')}`}></div>
-                 <div>
-                    <div className={`font-bold text-lg ${result === 'Chiến thắng' ? 'text-green-500' : (result === 'Hòa' ? 'text-yellow-500' : 'text-red-500')}`}>
-                        {result}
+        <div className="group relative">
+            <div className={`flex items-center justify-between p-4 bg-neutral-900/40 border-l-2 transition-all hover:bg-neutral-800/60 overflow-hidden ${isWin ? 'border-green-500/50' : (isDraw ? 'border-yellow-500/50' : 'border-red-500/50')}`}>
+                {/* HUD Ornaments */}
+                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                
+                <div className="flex items-center gap-6 min-w-[200px] relative z-10">
+                     <div className="flex flex-col">
+                        <div className={`font-black text-xs uppercase tracking-[0.2em] ${isWin ? 'text-green-400' : (isDraw ? 'text-yellow-400' : 'text-red-400')}`}>
+                            {result}
+                        </div>
+                        <div className="text-[9px] text-gray-500 font-black uppercase tracking-widest mt-1 opacity-70">
+                          {date} <span className="text-gray-800">/</span> {time}
+                        </div>
+                     </div>
+                </div>
+
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <div className={`px-3 py-1 bg-black/40 border rounded text-[9px] font-black uppercase tracking-[0.2em] ${mode.includes('Ranked') ? 'border-fuchsia-500/30 text-fuchsia-400' : 'border-blue-500/30 text-blue-400'}`}>
+                        {mode.replace(' Match', '')}
                     </div>
-                    <div className="text-xs text-gray-500 font-medium">{date} • {time}</div>
-                 </div>
-            </div>
+                </div>
 
-            {/* Center: Mode */}
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                <span className="font-bold text-white text-sm">{mode === 'Ranked Match' ? 'Ranked' : (mode === 'Normal Match' ? 'Normal' : mode)}</span>
-            </div>
+                <div className="flex items-center gap-10 justify-end flex-1 relative z-10">
+                     <div className="text-right">
+                        <div className="font-black text-2xl text-white tracking-tighter tabular-nums italic">{score}</div>
+                        {roundScores && roundScores.length > 0 && (
+                            <div className="text-[8px] text-gray-600 font-black tracking-[0.3em] uppercase mt-1">
+                                SEGMENTS: {roundScores.join(' ')}
+                            </div>
+                        )}
+                     </div>
 
-            {/* Right: Scores & MMR */}
-            <div className="flex items-center gap-6 justify-end flex-1">
-                 {/* Scores */}
-                 <div className="text-right">
-                    {roundScores && roundScores.length > 0 ? (
-                        <>
-                            <div className="font-black text-xl text-white tracking-widest">{roundScores.join(' / ')}</div>
-                            <div className="text-xs text-gray-400 font-bold">{avgScore}</div>
-                        </>
-                    ) : (
-                        <div className="text-xl font-black text-white">{score}</div>
-                    )}
-                 </div>
+                     {mode.includes('Ranked') && mmrChange !== undefined && (
+                        <div className={`w-14 h-14 flex flex-col items-center justify-center border font-black relative overflow-hidden ${mmrChange >= 0 ? 'border-green-500/20 text-green-400' : 'border-red-500/20 text-red-400'}`}>
+                            <div className="absolute inset-0 bg-current opacity-5" />
+                            <span className="text-[8px] opacity-40 mb-0.5">MMR</span>
+                            <span className="text-sm">{mmrChange >= 0 ? '+' : ''}{mmrChange}</span>
+                        </div>
+                     )}
+                </div>
 
-                 {/* MMR Badge */}
-                 {mode.includes('Ranked') && mmrChange !== undefined && (
-                    <div className={`px-2 py-1 rounded-md font-bold text-xs ${mmrChange >= 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                        {mmrChange >= 0 ? '+' : ''}{mmrChange} MMR
-                    </div>
-                 )}
+                {/* Cyber Scanline Loop (Hover Only) */}
+                <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-5 transition-opacity">
+                    <div className="w-full h-[200%] bg-[linear-gradient(to_bottom,transparent_0,rgba(255,255,255,0.4)_50%,transparent_100%)] animate-scanline-fast" />
+                </div>
             </div>
         </div>
     );
 };
 
 const LeaderboardRow = ({ rank, name, mmr, isTop }: { rank: number, name: string | null, mmr: number | null, isTop: boolean }) => (
-  <div className={`flex items-center justify-between p-3 rounded-xl transition-colors ${isTop ? 'bg-yellow-500/10 border border-yellow-500/20' : 'hover:bg-white/5 border border-transparent'}`}>
-    <div className="flex items-center gap-3">
-      <span className={`w-6 text-center font-bold ${rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-gray-300' : rank === 3 ? 'text-amber-600' : 'text-gray-500'}`}>{rank}</span>
-      <div className="flex items-center gap-2">
-        <RankBadge mmr={mmr} size="sm" showProgress={false} />
+  <div className={`flex items-center justify-between p-3 transition-all relative group ${isTop ? 'bg-fuchsia-500/5 border border-fuchsia-500/20 shadow-[0_0_15px_rgba(217,70,239,0.05)]' : 'hover:bg-white/5 border border-transparent'}`}>
+    {isTop && <div className="absolute left-0 top-0 w-1 h-full bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
+    
+    <div className="flex items-center gap-4 relative z-10">
+      <span className={`w-6 text-center font-black text-[10px] tracking-tighter ${rank === 1 ? 'text-fuchsia-400 text-sm' : rank === 2 ? 'text-gray-300' : rank === 3 ? 'text-amber-600' : 'text-gray-600'}`}>
+        #{rank}
+      </span>
+      <div className="flex items-center gap-3">
+        <div className="relative group-hover:scale-110 transition-transform">
+          <div className={`p-0.5 rounded-lg border shadow-lg ${isTop ? 'border-fuchsia-500/30 bg-fuchsia-500/10' : 'border-white/5 bg-neutral-800'}`}>
+            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`} className="w-9 h-9 rounded-md object-cover" alt={name || ""} />
+          </div>
+          <div className="absolute -bottom-1.5 -right-1.5 grayscale group-hover:grayscale-0 transition-all">
+             <RankBadge mmr={mmr} size="sm" showProgress={false} />
+          </div>
+        </div>
         <div>
-          <div className="font-bold text-sm text-white">{name || "Unknown"}</div>
+          <div className="font-black text-[11px] text-white uppercase tracking-tight">{name || "Unknown"}</div>
+          <div className="text-[9px] text-fuchsia-500/60 font-black uppercase tracking-widest">{mmr ?? 0} MMR</div>
         </div>
       </div>
     </div>
-    <div className="text-right">
-       <div className="text-sm font-bold text-white">{mmr ?? 0}</div>
-       <div className="text-[10px] text-gray-500 font-medium">MMR</div>
-    </div>
+    
+    <div className={`w-1.5 h-1.5 rounded-sm rotate-45 border ${isTop ? 'border-fuchsia-500 bg-fuchsia-500 shadow-[0_0_8px_#d946ef]' : 'border-white/10'}`}></div>
   </div>
 );
 
-const FriendRow = ({ name, status, avatar }: { name: string, status: string, avatar: string }) => (
-  <div className="flex items-center justify-between p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer">
-    <div className="flex items-center gap-3">
-      <div className="relative">
-        <img src={avatar} alt={name} className="w-10 h-10 rounded-full bg-neutral-800" />
-        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-neutral-900 rounded-full"></div>
-      </div>
-      <div>
-        <div className="text-sm font-bold text-white">{name}</div>
-        <div className="text-xs text-green-500">{status}</div>
-      </div>
-    </div>
-    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-      <Clock size={14} />
-    </div>
-  </div>
-);
 
 export default DashboardOverview;

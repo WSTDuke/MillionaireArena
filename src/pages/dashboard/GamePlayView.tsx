@@ -33,8 +33,8 @@ const GamePlayView = () => {
     const [searchParams] = useSearchParams();
     const mode = searchParams.get('mode') || 'Normal';
     const isRanked = mode.toLowerCase() === 'ranked';
-    const isBlitzmatch = mode.toLowerCase() === 'blitzmatch';
-    const QUESTION_TIME = isBlitzmatch ? 10 : 15;
+    const isBot = mode.toLowerCase() === 'bot';
+    const QUESTION_TIME = isBot ? 10 : 15;
 
     const [profile, setProfile] = useState<Profile | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
@@ -114,7 +114,7 @@ const GamePlayView = () => {
 
     useEffect(() => {
         // Redirect if state is lost (e.g., page reload)
-        if (!roomId && !isBlitzmatch) {
+        if (!roomId && !isBot) {
             navigate('/dashboard/arena');
             return;
         }
@@ -129,7 +129,50 @@ const GamePlayView = () => {
                 }
                 setUserId(user.id);
 
-                // 2. Fetch Profile and Room Data parallelly
+                // 2. BOT MODE: Pre-populate opponent and fetch questions locally
+                if (isBot || roomId?.startsWith('bot-local-')) {
+                    console.log('BOT mode detected: Initializing AI opponent');
+                    
+                    // Set BOT opponent
+                    const BOT_OPPONENT: Participant = {
+                        id: 'bot-ai-001',
+                        display_name: 'AI Assistant',
+                        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bot-ai',
+                        is_ready: true,
+                        is_host: false,
+                        rank: 'Diamond I'
+                    };
+                    setOpponent(BOT_OPPONENT);
+
+                    // Fetch profile
+                    const profileRes = await supabase.from('profiles').select('*').eq('id', user.id).single();
+                    if (profileRes.data) setProfile(profileRes.data);
+
+                    // Set BOT room settings
+                    setRoomSettings({
+                        format: 'Bo3',
+                        questions_per_round: 5
+                    });
+
+                    // Use hardcoded questions to avoid API rate limit
+                    const hardcodedQuestions: ProcessedQuestion[] = Array.from({ length: 15 }, (_, i) => ({
+                        text: `Câu hỏi số ${i + 1} - Đây là câu hỏi test cho chế độ BOT?`,
+                        options: [
+                            'Đáp án A',
+                            'Đáp án B', 
+                            'Đáp án C',
+                            'Đáp án D'
+                        ],
+                        correctAnswer: Math.floor(Math.random() * 4)
+                    }));
+                    
+                    setQuestions(hardcodedQuestions);
+                    setIsLoadingQuestions(false);
+                    console.log('BOT mode: Loaded 15 hardcoded questions');
+                    return;
+                }
+
+                // 3. NORMAL MODE: Fetch Profile and Room Data parallelly
                 const [profileRes, roomRes] = await Promise.all([
                     supabase.from('profiles').select('*').eq('id', user.id).single(),
                     roomId 
@@ -146,7 +189,7 @@ const GamePlayView = () => {
                     // Sync questions
                     if (roomData.questions && Array.isArray(roomData.questions)) {
                         setQuestions(roomData.questions);
-                    } else if (isBlitzmatch || isRanked) {
+                    } else if (isRanked) {
                         // If no questions in initial fetch, try a quick secondary fetch
                         console.warn("Retrying question fetch...");
                     }
@@ -156,7 +199,7 @@ const GamePlayView = () => {
                     if (opp) setOpponent(opp);
                     
                     setIsLoadingQuestions(false);
-                } else if (!isRanked && !isBlitzmatch) {
+                } else if (!isRanked) {
                     // For solo/testing
                     const r1 = await fetchQuestions(10, 'easy', user.id);
                     setQuestions(r1);
@@ -172,7 +215,7 @@ const GamePlayView = () => {
             }
         };
         getData();
-    }, [roomId, isRanked, isBlitzmatch, navigate]);
+    }, [roomId, isRanked, isBot, navigate]);
 
     const leaveRoom = useCallback(async () => {
         if (!roomId) return;
@@ -204,7 +247,7 @@ const GamePlayView = () => {
         };
 
         // 3. Save game history IMMEDIATELY for both players
-        const mode = isRanked ? 'Ranked' : (isBlitzmatch ? 'Blitz' : ((location as any).state?.isCustom ? 'Custom' : 'Normal'));
+        const mode = isRanked ? 'Ranked' : (isBot ? 'Bot' : ((location as any).state?.isCustom ? 'Custom' : 'Normal'));
         const userRoundScores = roundScoresRecord.map(r => r.user);
         const opponentRoundScores = roundScoresRecord.map(r => r.opponent);
         
@@ -248,7 +291,7 @@ const GamePlayView = () => {
             setIsMatchEnding(false);
             setModalType(null);
         }, 2000);
-    }, [userId, setScores, opponent, roomId, isRanked, isBlitzmatch, location, roundScoresRecord, roomSettings]);
+    }, [userId, setScores, opponent, roomId, isRanked, isBot, location, roundScoresRecord, roomSettings]);
 
     useEffect(() => {
         leaveRoomRef.current = leaveRoom;
@@ -270,9 +313,15 @@ const GamePlayView = () => {
         }
     }, [currentQuestionIndex, userId, isConfirmed, winsNeeded]);
 
-    // --- REALTIME ANSWER SYNC ---
+    // --- REALTIME SUBSCRIPTION ---
     useEffect(() => {
-        if (!roomId) return;
+        // Skip Realtime for BOT mode
+        if (isBot || roomId?.startsWith('bot-local-')) {
+            console.log('BOT mode: Skipping Realtime subscription');
+            return;
+        }
+
+        if (!roomId || !userId) return;
 
         let channel: RealtimeChannel | null = null;
         let retryTimeout: ReturnType<typeof setTimeout>;
@@ -357,7 +406,7 @@ const GamePlayView = () => {
                         };
 
                         // Save history IMMEDIATELY for winner
-                        const mode = isRanked ? 'Ranked' : (isBlitzmatch ? 'Blitz' : ((location as any).state?.isCustom ? 'Custom' : 'Normal'));
+                        const mode = isRanked ? 'Ranked' : (isBot ? 'Bot' : ((location as any).state?.isCustom ? 'Custom' : 'Normal'));
                         const userRoundScores = roundScoresRecord.map(r => r.user);
                         
                         // Pad scores
@@ -467,6 +516,34 @@ const GamePlayView = () => {
         };
     }, [isNavigatingAway]);
 
+    // --- BOT AI ANSWER SIMULATION ---
+    const simulateBotAnswer = useCallback((questionIndex: number) => {
+        if (!isBot || !questions[questionIndex]) return;
+
+        const delay = 2000 + Math.random() * 2000; // 2-4 seconds random delay
+        const accuracy = 0.65; // 65% correct rate
+
+        setTimeout(() => {
+            const currentQ = questions[questionIndex];
+            const isCorrect = Math.random() < accuracy;
+            const answerIndex = isCorrect 
+                ? currentQ.correctAnswer 
+                : Math.floor(Math.random() * 4);
+            
+            const botPoints = answerIndex === currentQ.correctAnswer ? 1 : 0;
+            
+            console.log(`BOT answered question ${questionIndex}: ${isCorrect ? 'Correct' : 'Wrong'}`);
+            
+            // Update opponent answer state
+            setOpponentAnswered({
+                isCorrect,
+                points: botPoints
+            });
+            
+            setRoundPoints((prev) => ({ ...prev, opponent: botPoints }));
+        }, delay);
+    }, [isBot, questions]);
+
     const handleAnswerSelect = useCallback((index: number) => {
         if (isConfirmed || showTransition || isGameOver || !questions[currentQuestionIndex]) return;
 
@@ -511,7 +588,12 @@ const GamePlayView = () => {
         }
 
         setRoundPoints((prev: { user: number; opponent: number }) => ({ ...prev, user: uPoints }));
-    }, [isConfirmed, showTransition, isGameOver, questions, currentQuestionIndex, userId, userScore]);
+        
+        // BOT MODE: Trigger AI answer simulation
+        if (isBot) {
+            simulateBotAnswer(currentQuestionIndex);
+        }
+    }, [isConfirmed, showTransition, isGameOver, questions, currentQuestionIndex, userId, userScore, isBot, simulateBotAnswer]);
 
     // --- SYNCHRONIZED TRANSITION LOGIC ---
     useEffect(() => {
@@ -708,179 +790,245 @@ const GamePlayView = () => {
     }
 
     return (
-        <div className="min-h-screen bg-neutral-950 text-white p-4 md:p-8 flex flex-col animate-fade-in relative overflow-y-auto">
-            {/* Background Glows */}
-            <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 blur-[120px] pointer-events-none"></div>
-            <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-fuchsia-600/10 blur-[120px] pointer-events-none"></div>
+        <div className="min-h-screen bg-black text-white p-4 md:p-8 flex flex-col animate-fade-in relative overflow-y-auto font-sans selection:bg-fuchsia-500 selection:text-white overflow-x-hidden">
+            {/* Background Pattern & Glows */}
+            <div className="fixed inset-0 bg-dot-pattern opacity-5 pointer-events-none"></div>
+            <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/10 blur-[120px] pointer-events-none"></div>
+            <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-fuchsia-600/10 blur-[120px] pointer-events-none"></div>
 
-            {/* Top Bar - Combined */}
-            <div className="flex justify-between items-center mb-12 relative z-10 bg-neutral-900/40 backdrop-blur-xl border border-white/5 p-4 rounded-[30px]">
-                {/* Me */}
-                <div className="flex items-center gap-4">
+            {/* --- TOP HUD --- */}
+            <div className="flex justify-between items-start mb-8 relative z-10 w-full max-w-7xl mx-auto">
+                {/* Left: Player (You) */}
+                <div className="flex items-center gap-4 md:gap-6 group">
                     <div className="relative">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-blue-500 to-purple-600 p-[2px] shadow-lg shadow-blue-500/20">
-                            <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-full object-cover border-4 border-black" alt="Me" />
+                        {/* Avatar Container */}
+                        <div className="w-16 h-16 md:w-20 md:h-20 bg-neutral-900 border-2 border-blue-500/30 p-1 relative overflow-hidden transition-all duration-300 group-hover:border-blue-500/60"
+                             style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
+                            <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
+                            <div className="absolute inset-0 border border-blue-500/50 pointer-events-none mix-blend-overlay"></div>
                         </div>
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-blue-500 border-2 border-black flex items-center justify-center">
-                            <Shield size={8} className="text-white" />
+                        {/* Rank Badge */}
+                        <div className="absolute -bottom-2 -right-2 transform scale-75 md:scale-90 z-20">
+                            <div className="w-8 h-8 bg-black border border-blue-500 flex items-center justify-center rotate-45 shadow-lg">
+                                <Shield size={14} className="text-blue-500 -rotate-45" />
+                            </div>
                         </div>
                     </div>
-                    <div>
-                        <div className="font-bold text-sm tracking-wide mb-1">{profile?.display_name || "BẠN"}</div>
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                                <Trophy className="text-blue-400" size={12} />
-                                <span className="text-xs font-black text-white">{setScores.user} ( hiệp ) / {userScore} ( điểm )</span>
-                            </div>
-                            <div className="flex gap-1">
+                    
+                    <div className="hidden md:flex flex-col">
+                         <div className="flex items-center gap-2 mb-1">
+                             <span className="text-lg font-black uppercase tracking-wider text-white truncate max-w-[150px]">{profile?.display_name || "BẠN"}</span>
+                             {setScores.user > setScores.opponent && <Zap size={14} className="text-yellow-400 fill-yellow-400 animate-pulse" />}
+                         </div>
+                         
+                         {/* Health/Score Bars */}
+                         <div className="flex flex-col gap-1.5 w-32 md:w-48">
+                             {/* Round Wins */}
+                             <div className="flex gap-1 h-2">
                                 {Array.from({ length: winsNeeded }).map((_, i) => (
-                                    <div 
-                                        key={i} 
-                                        className={`h-1.5 w-6 rounded-full transition-all duration-500 skew-x-[-20deg] ${i < setScores.user ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-white/10'}`}
-                                    />
+                                    <div key={i} className={`flex-1 transform -skew-x-12 transition-all duration-500 ${i < setScores.user ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]' : 'bg-white/10'}`} />
                                 ))}
-                            </div>
-                        </div>
+                             </div>
+                             {/* Current Points */}
+                             <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-blue-400">
+                                 <span>Score: {userScore}</span>
+                             </div>
+                         </div>
                     </div>
                 </div>
 
-                {/* Center: Timer & Round */}
-                <div className="flex items-center gap-8">
-                    <div className="flex flex-col items-center">
-                         <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 mb-1">Hiệp {currentRound} - Câu {questionNumberInRound}/{questionsPerRound}</div>
-                         <div className="text-2xl font-black italic text-white/10 tracking-tighter">VS</div>
-                    </div>
-
-                    <div className="relative group">
-                        <div className="relative w-16 h-16 flex items-center justify-center">
-                            <svg className="w-full h-full -rotate-90">
-                                <circle cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-white/5" />
-                                <circle 
-                                    cx="32" cy="32" r="28" fill="transparent" stroke="currentColor" strokeWidth="4" 
-                                    strokeDasharray={176}
-                                    strokeDashoffset={176 - (176 * timeLeft) / QUESTION_TIME}
-                                    className={`transition-all duration-1000 ${timeLeft < 5 ? 'text-red-500' : 'text-fuchsia-500'}`}
-                                />
-                            </svg>
-                            <div className={`absolute text-xl font-black ${timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-                                {timeLeft}
-                            </div>
+                {/* Center: Timer */}
+                <div className="absolute left-1/2 -translate-x-1/2 top-0 flex flex-col items-center z-20">
+                    <div className="relative mb-4">
+                        <div className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 mb-2 text-center whitespace-nowrap">
+                             Hiệp {currentRound} <span className="text-white/20 mx-2">|</span> Câu {questionNumberInRound}/{questionsPerRound}
                         </div>
                         
-                        {(isConfirmed || opponentAnswered) && (
-                             <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap flex items-center gap-2 bg-neutral-900 border border-white/5 px-3 py-1 rounded-full animate-bounce">
-                                 <Loader2 size={10} className="animate-spin text-blue-500" />
-                                 <span className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">
-                                     {isConfirmed && opponentAnswered ? 'Cả hai đã trả lời!' : isConfirmed ? 'Đang chờ đối thủ...' : 'Đối thủ đã trả lời!'}
-                                 </span>
-                             </div>
-                        )}
+                        {/* Hex Timer */}
+                        <div className={`relative w-20 h-20 mx-8 md:w-24 md:h-24 flex items-center justify-center transition-all duration-300 ${timeLeft <= 5 ? 'scale-110' : ''}`}>
+                            {/* SVG Timer Ring */}
+                            <svg className="w-full h-full -rotate-90 drop-shadow-2xl" viewBox="0 0 96 96" overflow="visible">
+                                <polygon points="48,2 94,25 94,71 48,94 2,71 2,25" fill="#000" fillOpacity="0.5" stroke="#333" strokeWidth="2" />
+                                <polygon 
+                                    points="48,2 94,25 94,71 48,94 2,71 2,25" 
+                                    fill="none" 
+                                    stroke={timeLeft <= 5 ? '#ef4444' : '#d946ef'} 
+                                    strokeWidth="4"
+                                    strokeDasharray="308"
+                                    strokeDashoffset={308 - (308 * timeLeft) / QUESTION_TIME}
+                                    strokeLinecap="round"
+                                    className="transition-all duration-1000 ease-linear"
+                                />
+                            </svg>
+                            
+                            {/* Number */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
+                                <span className={`text-3xl md:text-4xl font-black tabular-nums tracking-tighter leading-none ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                                    {timeLeft}
+                                </span>
+                            </div>
+                        </div>
                     </div>
+                    
 
-                    <div className="flex items-center gap-3">
-                        <button 
-                            onClick={() => setModalType('surrender')}
-                            className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-colors group"
-                        >
-                            <Flag size={16} className="text-purple-400 group-hover:scale-110 transition-transform" />
-                        </button>
-                        <button 
-                            onClick={() => setModalType('exit')}
-                            className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-colors group"
-                        >
-                            <LogOut size={16} className="text-red-400" />
-                        </button>
-                    </div>
                 </div>
 
-                {/* Opponent */}
-                <div className="flex items-center gap-4 text-right">
-                    <div>
-                        <div className="font-bold text-sm tracking-wide mb-1 text-gray-400">
-                            {opponent?.display_name || "ĐỐI THỦ"}
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-center justify-end gap-2 text-right">
-                                <Zap className="text-red-400" size={12} />
-                                <span className="text-xs font-black text-white">{setScores.opponent} ( hiệp ) / {opponentScore} ( điểm )</span>
-                            </div>
-                            <div className="flex gap-1">
+                {/* Right: Opponent */}
+                <div className="flex items-center gap-4 md:gap-6 group text-right">
+                    <div className="hidden md:flex flex-col items-end">
+                         <div className="flex items-center gap-2 mb-1 justify-end">
+                             {setScores.opponent > setScores.user && <Zap size={14} className="text-yellow-400 fill-yellow-400 animate-pulse" />}
+                             <span className="text-lg font-black uppercase tracking-wider text-white truncate max-w-[150px]">{opponent?.display_name || "ĐỐI THỦ"}</span>
+                         </div>
+                         
+                         {/* Health/Score Bars */}
+                         <div className="flex flex-col gap-1.5 w-32 md:w-48 items-end">
+                             {/* Round Wins */}
+                             <div className="flex gap-1 h-2 w-full justify-end">
                                 {Array.from({ length: winsNeeded }).map((_, i) => (
-                                    <div 
-                                        key={i} 
-                                        className={`h-1.5 w-6 rounded-full transition-all duration-500 skew-x-[-20deg] ${i < setScores.opponent ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-white/10'}`}
-                                    />
+                                    <div key={i} className={`flex-1 transform skew-x-12 transition-all duration-500 ${i < setScores.opponent ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.6)]' : 'bg-white/10'}`} />
                                 ))}
-                            </div>
-                        </div>
+                             </div>
+                             {/* Current Points */}
+                             <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-red-400 w-full">
+                                 <span>Score: {opponentScore}</span>
+                             </div>
+                         </div>
                     </div>
+
                     <div className="relative">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-red-500 to-orange-600 p-[2px] shadow-lg shadow-red-500/20 opacity-80">
+                        {/* Avatar Container */}
+                        <div className="w-16 h-16 md:w-20 md:h-20 bg-neutral-900 border-2 border-red-500/30 p-1 relative overflow-hidden transition-all duration-300 group-hover:border-red-500/60"
+                             style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
                             <img 
                                 src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} 
-                                className="w-full h-full rounded-full object-cover border-4 border-black" 
+                                className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" 
                                 alt="Opponent" 
                             />
+                            <div className="absolute inset-0 border border-red-500/50 pointer-events-none mix-blend-overlay"></div>
                         </div>
-                        <div className="absolute -bottom-1 -left-1 w-5 h-5 rounded-full bg-red-500 border-2 border-black flex items-center justify-center">
-                            <Zap size={8} className="text-white" />
+                        {/* Rank Badge */}
+                        <div className="absolute -bottom-2 -left-2 transform scale-75 md:scale-90 z-20">
+                            <div className="w-8 h-8 bg-black border border-red-500 flex items-center justify-center rotate-45 shadow-lg">
+                                <Zap size={14} className="text-red-500 -rotate-45" />
+                            </div>
                         </div>
+
+                         {/* Status Badge (Relocated) */}
+                         {(isConfirmed || opponentAnswered) && (
+                            <div className="absolute top-[110%] right-0 whitespace-nowrap z-30">
+                                <div className="px-3 py-1 bg-black/90 border border-red-500/30 backdrop-blur-md rounded-full flex items-center gap-2 animate-fade-in shadow-xl">
+                                    {!(isConfirmed && opponentAnswered) && <Loader2 size={10} className="text-red-500 animate-spin" />}
+                                    <span className="text-[8px] font-bold uppercase tracking-wider text-gray-300">
+                                        {isConfirmed && opponentAnswered ? 'Waiting Next...' : isConfirmed ? 'Đang đợi...' : 'Đã trả lời!'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Main Quiz Area */}
-            <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-center gap-6 md:gap-10 relative z-10 pb-12">
+            {/* --- UTILITY BUTTONS (Top Right corner absolute) --- */}
+            <div className="absolute top-6 right-6 flex gap-2 z-30">
+                <button 
+                    onClick={() => setModalType('surrender')} 
+                    className="w-10 h-10 bg-black/40 border border-white/10 hover:border-red-500/50 hover:bg-red-500/10 flex items-center justify-center transition-all backdrop-blur-sm group" 
+                    style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
+                    title="Đầu hàng"
+                >
+                    <Flag size={16} className="text-gray-500 group-hover:text-red-500 transition-colors" />
+                </button>
+                <button 
+                    onClick={() => setModalType('exit')} 
+                    className="w-10 h-10 bg-black/40 border border-white/10 hover:border-white/30 hover:bg-white/10 flex items-center justify-center transition-all backdrop-blur-sm group" 
+                    style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
+                    title="Thoát"
+                >
+                    <LogOut size={16} className="text-gray-500 group-hover:text-white transition-colors" />
+                </button>
+            </div>
+
+            {/* --- MAIN QUESTION AREA --- */}
+            <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col justify-center gap-8 relative z-10 pb-8">
                 
                 {/* Question Card */}
                 <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-[40px] blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <div className="bg-neutral-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-6 md:p-12 text-center shadow-2xl relative">
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">
-                            Câu 0{currentQuestionIndex + 1}
+                    <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/0 via-fuchsia-500/20 to-purple-600/0 rounded-[20px] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
+                    <div className="relative bg-neutral-900/80 backdrop-blur-xl border border-white/10 p-8 md:p-12 text-center shadow-2xl"
+                         style={{ clipPath: 'polygon(30px 0, 100% 0, 100% calc(100% - 30px), calc(100% - 30px) 100%, 0 100%, 0 30px)' }}>
+                        {/* HUD Corners */}
+                        <div className="absolute top-0 left-0 w-16 h-16 border-t-2 border-l-2 border-fuchsia-500/20"></div>
+                        <div className="absolute bottom-0 right-0 w-16 h-16 border-b-2 border-r-2 border-fuchsia-500/20"></div>
+                        
+                        {/* Scanline */}
+                        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent animate-scanline-fast opacity-50"></div>
+
+                        <div className="inline-flex items-center gap-2 mb-6 opacity-60">
+                            <span className="w-2 h-2 bg-fuchsia-500 rotate-45 animate-pulse"></span>
+                            <span className="text-xs font-black uppercase tracking-[0.3em] text-fuchsia-300">Question Protocol</span>
+                            <span className="w-2 h-2 bg-fuchsia-500 rotate-45 animate-pulse"></span>
                         </div>
-                        <h2 className="text-xl md:text-3xl font-bold leading-tight text-white mb-2">
-                            {question?.text || "..."}
+
+                        <h2 className="text-2xl md:text-3xl font-black leading-tight text-white mb-2 uppercase italic tracking-wide drop-shadow-lg min-h-[4rem] flex items-center justify-center">
+                            {question?.text || "Initializing data stream..."}
                         </h2>
                     </div>
                 </div>
 
                 {/* Answers Grid */}
                 {gameStage === 'playing' && question ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 animate-in slide-in-from-bottom-10 duration-700">
-                        {question.options.map((option: string, index: number) => (
-                            <button
-                                key={index}
-                                onClick={() => handleAnswerSelect(index)}
-                                disabled={isConfirmed}
-                                className={`
-                                    group relative p-4 md:p-6 rounded-[25px] border-2 transition-all duration-300 text-left h-full
-                                    ${selectedAnswer === index 
-                                        ? 'bg-blue-600/20 border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.3)]' 
-                                        : 'bg-neutral-900/40 border-white/5 hover:border-white/20 hover:bg-white/5'}
-                                    ${isConfirmed && selectedAnswer === index ? (index === question.correctAnswer ? 'bg-green-600/20 border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'bg-red-600/20 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)]') : ''}
-                                `}
-                            >
-                                <div className="flex items-center gap-6">
-                                    <div className={`
-                                        w-12 h-12 rounded-xl flex items-center justify-center font-black text-xl transition-colors
-                                        ${selectedAnswer === index ? 'bg-blue-500 text-white' : 'bg-white/10 text-gray-500 group-hover:bg-white/20'}
-                                        ${isConfirmed && selectedAnswer === index ? (index === question.correctAnswer ? 'bg-green-500' : 'bg-red-500') : ''}
-                                    `}>
-                                        {String.fromCharCode(65 + index)}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 animate-in slide-in-from-bottom-10 duration-700 fade-in fill-mode-both">
+                        {question.options.map((option: string, index: number) => {
+                             const isSelected = selectedAnswer === index;
+                             const isCorrect = index === question.correctAnswer;
+                             const isShowCorrect = isConfirmed && isCorrect;
+                             const isWrong = isConfirmed && isSelected && !isCorrect;
+
+                             return (
+                                <button
+                                    key={index}
+                                    onClick={() => handleAnswerSelect(index)}
+                                    disabled={isConfirmed}
+                                    className={`
+                                        group relative p-6 h-full text-left transition-all duration-300
+                                        ${isSelected 
+                                            ? 'bg-fuchsia-600/20 border-fuchsia-500' 
+                                            : 'bg-neutral-900/60 border-white/5 hover:border-white/20 hover:bg-neutral-800'}
+                                        ${isShowCorrect ? '!bg-green-500/20 !border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : ''}
+                                        ${isWrong ? '!bg-red-500/20 !border-red-500' : ''}
+                                        border-l-4
+                                    `}
+                                    style={{ clipPath: 'polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px)' }}
+                                >
+                                    {/* Decoration */}
+                                    <div className={`absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'opacity-100' : ''}`}>
+                                        <div className="w-6 h-6 border-t border-r border-current"></div>
                                     </div>
-                                    <span className={`text-xl font-bold ${selectedAnswer === index ? 'text-white' : 'text-gray-400 group-hover:text-gray-200'}`}>
-                                        {option}
-                                    </span>
-                                </div>
-                            </button>
-                        ))}
+
+                                    <div className="flex items-center gap-5">
+                                        <div className={`
+                                            w-10 h-10 flex items-center justify-center font-black text-sm border shrink-0
+                                            ${isSelected ? 'bg-fuchsia-500 text-white border-fuchsia-500' : 'bg-black border-white/20 text-gray-500 group-hover:border-white/50 group-hover:text-white'}
+                                            ${isShowCorrect ? '!bg-green-500 !border-green-500 !text-white' : ''}
+                                            ${isWrong ? '!bg-red-500 !border-red-500 !text-white' : ''}
+                                            transform rotate-45 transition-colors duration-300
+                                        `}>
+                                            <span className="-rotate-45">{String.fromCharCode(65 + index)}</span>
+                                        </div>
+                                        <span className={`text-lg font-bold uppercase tracking-tight ${isSelected ? 'text-white' : 'text-gray-400 group-hover:text-white'} ${isShowCorrect ? '!text-white' : ''}`}>
+                                            {option}
+                                        </span>
+                                    </div>
+                                </button>
+                             );
+                        })}
                     </div>
                 ) : (
-                    <div className="h-[200px]"></div>
+                    <div className="h-[300px] flex items-center justify-center">
+                         <Loader2 className="w-12 h-12 text-fuchsia-500 animate-spin" />
+                    </div>
                 )}
-
-                {/* Action Button - Removed for instant selection */}
             </div>
 
             {/* Floating Help Circle Decoration */}
@@ -890,46 +1038,50 @@ const GamePlayView = () => {
             </div>
 
             {/* Confirmation Modal */}
+            {/* Confirmation Modal */}
             {modalType && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-300">
-                    {/* Overlay */}
                     <div 
-                        className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                        className="absolute inset-0 bg-neutral-950/90 backdrop-blur-md"
                         onClick={() => setModalType(null)}
                     ></div>
                     
-                    {/* Modal Content */}
-                    <div className={`relative bg-neutral-900 border ${modalType === 'exit' ? 'border-red-500/20' : 'border-purple-500/20'} rounded-[32px] p-8 md:p-10 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-300`}>
+                    <div className="relative w-full max-w-md bg-neutral-900 border border-white/10 p-10 shadow-2xl animate-in zoom-in-95 duration-300 group"
+                         style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                        <div className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 ${modalType === 'exit' ? 'border-red-500' : 'border-fuchsia-500'}`}></div>
+                        <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 ${modalType === 'exit' ? 'border-red-500' : 'border-fuchsia-500'}`}></div>
+
                         <div className="flex flex-col items-center text-center">
-                            <div className={`w-20 h-20 rounded-3xl ${modalType === 'exit' ? 'bg-red-500/10 border-red-500/20' : 'bg-purple-500/10 border-purple-500/20'} flex items-center justify-center mb-6 border`}>
-                                {modalType === 'exit' ? <LogOut size={40} className="text-red-500" /> : <Flag size={40} className="text-purple-500" />}
+                            <div className={`w-16 h-16 rounded-xl ${modalType === 'exit' ? 'bg-red-500/10 border-red-500/30' : 'bg-fuchsia-500/10 border-fuchsia-500/30'} border-2 flex items-center justify-center mb-6`}>
+                                {modalType === 'exit' ? <LogOut size={32} className={modalType === 'exit' ? 'text-red-500' : 'text-fuchsia-500'} /> : <Flag size={32} className={modalType === 'exit' ? 'text-red-500' : 'text-fuchsia-500'} />}
                             </div>
                             
-                            <h3 className="text-2xl font-black text-white mb-4 uppercase tracking-tight">
-                                {modalType === 'exit' ? 'Rời khỏi trận đấu?' : 'Xác nhận đầu hàng?'}
+                            <h3 className="text-2xl font-black text-white mb-2 uppercase italic tracking-wide">
+                                {modalType === 'exit' ? 'THOÁI TRẬN?' : 'Đầu hàng?'}
                             </h3>
+                            <div className="w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent mb-6"></div>
                             
-                            <div className={`${modalType === 'exit' ? 'bg-red-500/5 border-red-500/10' : 'bg-purple-500/5 border-purple-500/10'} border rounded-2xl p-4 mb-8 text-center w-full`}>
-                                <p className="text-gray-400 text-sm leading-relaxed">
-                                    {modalType === 'exit' 
-                                        ? 'Bạn có chắc chắn muốn rời khỏi trận đấu này không? Nếu thoát bây giờ, hệ thống sẽ tính '
-                                        : 'Bạn có chắc chắn muốn đầu hàng không? Nếu đầu hàng ngay bây giờ, hệ thống sẽ tính '}
-                                    <span className={`${modalType === 'exit' ? 'text-red-500' : 'text-purple-500'} font-bold underline underline-offset-4 decoration-2`}>1 trận thua</span> cho bạn.
-                                </p>
-                            </div>
+                            <p className="text-gray-400 text-sm leading-relaxed font-bold mb-8">
+                                {modalType === 'exit' 
+                                    ? 'Rời trận lúc này sẽ dẫn đến việc bị xử thua ngay lập tức. Hệ thống sẽ ghi nhận đây là một trận '
+                                    : 'Đầu hàng sẽ kết thúc trận đấu hiện tại. Hệ thống sẽ ghi nhận đây là một trận '}
+                                <span className={`${modalType === 'exit' ? 'text-red-500' : 'text-fuchsia-500'}`}>THẤT BẠI</span>.
+                            </p>
                             
                             <div className="grid grid-cols-2 gap-4 w-full">
                                 <button 
                                     onClick={() => setModalType(null)}
-                                    className="px-6 py-4 rounded-2xl bg-neutral-800 border border-white/5 text-gray-400 font-bold hover:bg-neutral-700 transition-colors"
+                                    className="px-6 py-4 bg-white/5 border border-white/10 text-gray-300 font-black uppercase tracking-wider hover:bg-white/10 transition-colors"
+                                    style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
                                 >
-                                    Tiếp tục đấu
+                                    Hủy
                                 </button>
                                 <button 
                                     onClick={handleSurrender}
-                                    className={`px-6 py-4 rounded-2xl ${modalType === 'exit' ? 'bg-red-600 hover:bg-red-500 shadow-red-600/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/20'} text-white font-black uppercase tracking-wider shadow-lg transition-all active:scale-95`}
+                                    className={`px-6 py-4 ${modalType === 'exit' ? 'bg-red-600 hover:bg-red-500' : 'bg-fuchsia-600 hover:bg-fuchsia-500'} text-white font-black uppercase tracking-wider shadow-lg transition-all active:scale-95`}
+                                    style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
                                 >
-                                    {modalType === 'exit' ? 'Thoát' : 'Đầu hàng'}
+                                    Xác nhận
                                 </button>
                             </div>
                         </div>
@@ -942,123 +1094,80 @@ const GamePlayView = () => {
                 <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-neutral-950 px-4 md:px-0">
                     <div className="absolute inset-0 overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.1)_0%,transparent_70%)]"></div>
-                        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
+                        <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
                     </div>
 
-                    <div className="relative w-full max-w-5xl flex flex-col md:flex-row items-center justify-between gap-12 md:gap-0">
+                    <div className="relative w-full max-w-6xl flex flex-col md:flex-row items-center justify-between gap-12 md:gap-0">
                         {/* Player 1 */}
                         <div className="flex flex-col items-center gap-6 animate-in slide-in-from-left-20 duration-1000">
-                            <div className="relative">
-                                <div className="w-32 h-32 md:w-48 md:h-48 rounded-[40px] bg-gradient-to-tr from-blue-500 to-purple-600 p-[3px] shadow-[0_0_50px_rgba(59,130,246,0.3)] rotate-3 hover:rotate-0 transition-transform duration-500">
-                                    <div className="w-full h-full rounded-[37px] bg-black p-1">
-                                        <img 
-                                            src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} 
-                                            className="w-full h-full rounded-[34px] object-cover" 
-                                            alt="Me" 
-                                        />
-                                    </div>
-                                </div>
-                                <div className="absolute -bottom-4 -right-4 px-4 py-2 bg-blue-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">BẠN</div>
-                            </div>
-                            <div className="text-center">
-                                <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "BẠN"}</h2>
-                                 <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-blue-400 border border-blue-500/20">Điểm: {userScore}</div>
-                                </div>
-                            </div>
+                             <div className="relative w-32 h-32 md:w-56 md:h-56 bg-neutral-900 border-2 border-blue-500/50 p-1 overflow-hidden"
+                                  style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-blue-900/50 to-transparent"></div>
+                                <div className="absolute bottom-0 w-full bg-blue-600/80 p-1 text-center text-[10px] font-black uppercase tracking-[0.3em] text-white backdrop-blur-sm">YOU</div>
+                             </div>
+                             <div className="text-center">
+                                 <h2 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tighter italic">{profile?.display_name || "BẠN"}</h2>
+                                 <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-blue-400 mt-2">Score: {userScore}</div>
+                             </div>
                         </div>
 
                         {/* Center VS / Countdown */}
-                        <div className="relative flex items-center justify-center w-48 h-48 md:w-64 md:h-64">
-                            {/* Dynamic Mode-Aware Background Glow */}
-                            <div className={`absolute inset-0 blur-[100px] rounded-full opacity-30 animate-pulse ${
-                                isRanked ? 'bg-fuchsia-600' : isBlitzmatch ? 'bg-red-600' : 'bg-blue-600'
-                            }`}></div>
-
+                        <div className="relative flex items-center justify-center w-64 h-64">
                             {gameStage === 'preparing' ? (
                                 <div className="relative flex items-center justify-center w-full h-full">
-                                    {/* Large VS Background */}
-                                    <div className="absolute text-8xl md:text-[10rem] font-black italic text-white/5 tracking-tighter select-none">
-                                        VS
-                                    </div>
-                                    
-                                    {/* Progress Ring */}
-                                    <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                                    <div className="absolute text-[8rem] font-black italic text-white/5 tracking-tighter select-none flex items-center justify-center w-full h-full">VS</div>
+                                    <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-[0_0_15px_rgba(217,70,239,0.3)]">
+                                        <circle cx="50%" cy="50%" r="45%" className="stroke-white/5 fill-none" strokeWidth="2" />
                                         <circle 
                                             cx="50%" cy="50%" r="45%" 
-                                            className="stroke-white/5 fill-none" 
-                                            strokeWidth="2" 
-                                        />
-                                        <circle 
-                                            cx="50%" cy="50%" r="45%" 
-                                            className={`fill-none transition-all duration-1000 ease-linear ${
-                                                isRanked ? 'stroke-fuchsia-500' : isBlitzmatch ? 'stroke-red-500' : 'stroke-blue-500'
-                                            }`} 
-                                            strokeWidth="6" 
+                                            className="fill-none transition-all duration-1000 ease-linear stroke-fuchsia-500" 
+                                            strokeWidth="4" 
                                             strokeDasharray="100 100"
                                             strokeDashoffset={100 - (100 * introTimer / 5)}
                                             pathLength="100"
-                                            strokeLinecap="round"
                                         />
                                     </svg>
-
-                                    {/* Counting Number */}
-                                    <div key={introTimer} className="relative z-10 text-7xl md:text-9xl font-black text-white tabular-nums drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] animate-in zoom-in-150 fade-in duration-300 italic">
+                                    <div key={introTimer} className="relative z-10 text-8xl font-black text-white tabular-nums animate-in zoom-in-125 fade-in duration-300 italic tracking-tighter flex items-center justify-center w-full text-center">
                                         {introTimer}
                                     </div>
-
-                                    {/* Outer Scanning Ornament */}
-                                    <div className={`absolute inset-[-20px] border-t-2 border-r-2 rounded-full opacity-20 animate-[spin_6s_linear_infinite] ${
-                                        isRanked ? 'border-fuchsia-400' : isBlitzmatch ? 'border-red-400' : 'border-blue-400'
-                                    }`}></div>
                                 </div>
                             ) : (
-                                <div className="relative flex flex-col items-center animate-in zoom-in-150 duration-700">
-                                    <div className={`text-6xl md:text-8xl font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-b ${
-                                        isRanked ? 'from-fuchsia-400 to-fuchsia-700' : isBlitzmatch ? 'from-red-400 to-red-700' : 'from-blue-400 to-blue-700 text-center'
-                                    } drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]`}>
-                                        Bắt đầu!
+                                <div className="relative flex flex-col items-center animate-in zoom-in-150 duration-500">
+                                    <div className="text-7xl md:text-9xl font-black uppercase tracking-tighter italic text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 drop-shadow-[0_0_30px_rgba(255,255,255,0.4)]">
+                                        START!
                                     </div>
-                                    <div className="absolute -inset-10 bg-white/10 blur-3xl -z-10 rounded-full animate-ping"></div>
                                 </div>
                             )}
                         </div>
 
                         {/* Player 2 */}
                         <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-20 duration-1000">
-                            <div className="relative">
-                                <div className="w-32 h-32 md:w-48 md:h-48 rounded-[40px] bg-gradient-to-tr from-red-500 to-orange-600 p-[3px] shadow-[0_0_50px_rgba(239,68,68,0.3)] -rotate-3 hover:rotate-0 transition-transform duration-500">
-                                    <div className="w-full h-full rounded-[37px] bg-black p-1">
-                                        <img 
-                                            src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} 
-                                            className="w-full h-full rounded-[34px] object-cover" 
-                                            alt={opponent?.display_name || "ĐỐI THỦ"} 
-                                        />
-                                    </div>
-                                </div>
-                                <div className="absolute -bottom-4 -left-4 px-4 py-2 bg-red-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg italic">ĐỐI THỦ</div>
-                            </div>
-                            <div className="text-center">
-                                <h2 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter">{opponent?.display_name || "ĐỐI THỦ"}</h2>
-                                 <div className="flex justify-center gap-2 mt-2">
-                                     <div className="px-3 py-1 bg-white/5 rounded-full text-[10px] font-bold text-red-400 border border-red-500/20">Điểm: {opponentScore}</div>
-                                </div>
-                            </div>
+                             <div className="relative w-32 h-32 md:w-56 md:h-56 bg-neutral-900 border-2 border-red-500/50 p-1 overflow-hidden"
+                                  style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover" alt="Opponent" />
+                                <div className="absolute inset-0 bg-gradient-to-t from-red-900/50 to-transparent"></div>
+                                <div className="absolute bottom-0 w-full bg-red-600/80 p-1 text-center text-[10px] font-black uppercase tracking-[0.3em] text-white backdrop-blur-sm">OPPONENT</div>
+                             </div>
+                             <div className="text-center">
+                                 <h2 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tighter italic">{opponent?.display_name || "ĐỐI THỦ"}</h2>
+                                 <div className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-red-400 mt-2">Score: {opponentScore}</div>
+                             </div>
                         </div>
                     </div>
 
                     <div className="mt-20 flex flex-col items-center gap-4">
                         <div className="px-8 py-3 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-md flex items-center gap-3">
                             <p className="text-xl md:text-2xl font-black text-gray-400 uppercase tracking-[0.3em] animate-pulse">
-                                {gameStage === 'preparing' ? 'Chuẩn bị trận đấu' : 'Trận đấu đang diễn ra'}
+                                {gameStage === 'preparing' ? 'ĐANG KIỂM TRA...' : 'VÀO CHƠI...'}
                             </p>
                             {isLoadingQuestions && (
-                                <Loader2 size={20} className="animate-spin text-blue-500" />
+                                <Loader2 size={20} className="animate-spin text-fuchsia-500" />
                             )}
                         </div>
                         <div className="flex gap-2">
                              {[1,2,3].map(i => (
-                                 <div key={i} className={`w-2 h-2 rounded-full ${gameStage === 'preparing' ? 'bg-blue-500 animate-pulse' : 'bg-green-500 animate-bounce'} `} style={{ animationDelay: `${i * 0.2}s` }}></div>
+                                 <div key={i} className={`w-2 h-2 rounded-full ${gameStage === 'preparing' ? 'bg-fuchsia-500 animate-pulse' : 'bg-green-500 animate-bounce'} `} style={{ animationDelay: `${i * 0.2}s` }}></div>
                              ))}
                         </div>
                     </div>
@@ -1066,55 +1175,62 @@ const GamePlayView = () => {
             )}
             {/* Round Transition Overlay */}
             {showTransition && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-950/90 backdrop-blur-xl animate-in fade-in duration-500 overflow-hidden">
-                    {/* Background Text - Dead Centered */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0">
-                        <div className="text-7xl md:text-[12rem] font-black italic text-white/[0.03] animate-pulse text-center leading-[0.8]">
-                            {isEndOfRound ? (
-                                <div className="flex flex-col items-center">
-                                    <span>HIỆP {currentRound}</span>
-                                    <span className="text-4xl md:text-6xl mt-6 opacity-30 tracking-[0.3em]">HOÀN THÀNH</span>
-                                </div>
-                            ) : (
-                                'CÂU TIẾP THEO'
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="relative w-full max-w-5xl flex items-center justify-between px-8 md:px-20 z-10">
-                        {/* Player 1 Change */}
-                        <div className="flex flex-col items-center gap-6 animate-in slide-in-from-left-20 duration-700">
-                             <div className="relative">
-                                 <div className={`w-36 h-36 md:w-56 md:h-56 rounded-full border-4 ${roundPoints.user > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} p-1.5 bg-black`}>
-                                      <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-full object-cover" alt="Me" />
-                                 </div>
-                                 <div className={`absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black ${roundPoints.user > 0 ? 'text-green-500' : 'text-red-500'} drop-shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-bounce`}>
-                                     {roundPoints.user > 0 ? `+${roundPoints.user}` : roundPoints.user}
-                                 </div>
+                <div className="fixed inset-0 z-[60] bg-neutral-950/95 backdrop-blur-xl animate-in fade-in duration-300 overflow-y-auto custom-scrollbar">
+                    <div className="min-h-full flex flex-col items-center justify-center p-4 py-8">
+                        <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none fixed"></div>
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
+                             <div className="text-[20vw] font-black italic text-white/[0.02] tracking-tighter leading-none whitespace-nowrap">
+                                 ROUND {currentRound}
                              </div>
-                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{profile?.display_name || "BẠN"}</div>
                         </div>
 
-                        {/* Center Spacer for Continue Button */}
-                        <div className="flex flex-col items-center justify-center min-w-[100px] md:min-w-[200px]">
-                            {isEndOfRound && currentRound < maxRounds && (
-                                <div className="px-8 py-3 rounded-full bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm font-black tracking-widest uppercase animate-bounce shadow-[0_0_30px_rgba(59,130,246,0.2)]">
-                                    Tiếp tục Round {currentRound + 1}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Player 2 Change */}
-                        <div className="flex flex-col items-center gap-6 animate-in slide-in-from-right-20 duration-700">
-                             <div className="relative">
-                                  <div className={`w-36 h-36 md:w-56 md:h-56 rounded-full border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} p-1.5 bg-black`}>
-                                       <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full rounded-full object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
-                                  </div>
-                                 <div className={`absolute -top-12 left-1/2 -translate-x-1/2 text-5xl font-black ${roundPoints.opponent > 0 ? 'text-green-500' : 'text-red-500'} drop-shadow-[0_0_10px_rgba(0,0,0,0.5)] animate-bounce`}>
-                                     {roundPoints.opponent > 0 ? `+${roundPoints.opponent}` : roundPoints.opponent}
+                        <div className="relative w-full max-w-7xl flex flex-col md:flex-row items-center justify-between gap-12 md:gap-0 z-10">
+                             {/* Player 1 Stats */}
+                             <div className="flex flex-col items-center gap-4 animate-in slide-in-from-left-20 duration-700">
+                                 <div className="relative">
+                                      <div className={`w-32 h-32 md:w-52 md:h-52 bg-neutral-900 border-4 ${roundPoints.user > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} overflow-hidden grayscale-[0.5]`}
+                                           style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                          <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
+                                      </div>
+                                      <div className={`absolute -top-6 -right-6 w-16 h-16 md:w-20 md:h-20 flex items-center justify-center bg-black border-2 rounded-full text-2xl md:text-3xl font-black ${roundPoints.user > 0 ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'} shadow-xl z-20`}>
+                                          {roundPoints.user > 0 ? `+${roundPoints.user}` : roundPoints.user}
+                                      </div>
                                  </div>
+                                 <div className="text-xl md:text-2xl font-black text-white uppercase tracking-wider">{profile?.display_name || "BẠN"}</div>
                              </div>
-                             <div className="text-2xl font-black text-white uppercase tracking-tighter drop-shadow-lg">{opponent?.display_name || "ĐỐI THỦ"}</div>
+
+                            {/* Center Status */}
+                             <div className="flex flex-col items-center gap-4 text-center my-8 md:my-0">
+                                 <div className="px-4 py-1 bg-white/10 rounded-full border border-white/10 text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Status Update</div>
+                                 <div className="text-4xl md:text-6xl font-black text-white italic tracking-tighter uppercase">
+                                     {isEndOfRound ? (
+                                         <>
+                                            <span className="text-red-500">ROUND {currentRound}</span>
+                                            <br />COMPLETE
+                                         </>
+                                     ) : 'NEXT QUESTION'}
+                                 </div>
+                                 {isEndOfRound && currentRound < maxRounds && (
+                                     <div className="mt-4 px-8 py-3 bg-red-600 text-white font-black uppercase tracking-widest shadow-[0_0_30px_rgba(239,68,68,0.4)] animate-pulse"
+                                          style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
+                                         Loading Round {currentRound + 1}...
+                                     </div>
+                                 )}
+                             </div>
+
+                             {/* Player 2 Stats */}
+                             <div className="flex flex-col items-center gap-4 animate-in slide-in-from-right-20 duration-700">
+                                 <div className="relative">
+                                      <div className={`w-32 h-32 md:w-52 md:h-52 bg-neutral-900 border-4 ${roundPoints.opponent > 0 ? 'border-green-500 shadow-[0_0_50px_rgba(34,197,94,0.3)]' : 'border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)]'} overflow-hidden grayscale-[0.5]`}
+                                           style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                          <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover" alt="Opponent" />
+                                      </div>
+                                      <div className={`absolute -top-6 -left-6 w-16 h-16 md:w-20 md:h-20 flex items-center justify-center bg-black border-2 rounded-full text-2xl md:text-3xl font-black ${roundPoints.opponent > 0 ? 'border-green-500 text-green-500' : 'border-red-500 text-red-500'} shadow-xl z-20`}>
+                                          {roundPoints.opponent > 0 ? `+${roundPoints.opponent}` : roundPoints.opponent}
+                                      </div>
+                                 </div>
+                                 <div className="text-xl md:text-2xl font-black text-white uppercase tracking-wider">{opponent?.display_name || "ĐỐI THỦ"}</div>
+                             </div>
                         </div>
                     </div>
                 </div>
@@ -1122,224 +1238,212 @@ const GamePlayView = () => {
 
             {/* Game Over / Results Overlay */}
             {isGameOver && (
-                <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-neutral-950 px-4">
-                    <div className={`absolute inset-0 ${setScores.user > setScores.opponent ? 'bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.15)_0%,transparent_70%)]' : setScores.user < setScores.opponent ? 'bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.1)_0%,transparent_70%)]' : 'bg-transparent'} animate-pulse`}></div>
-                    
-                    <div className="relative mb-8 text-center animate-in zoom-in-50 duration-700">
-                        <Trophy size={80} className={`${setScores.user > setScores.opponent ? 'text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)]' : setScores.user < setScores.opponent ? 'text-gray-400 drop-shadow-none' : 'text-gray-600'} mx-auto mb-4`} />
-                        <h1 className={`text-6xl md:text-8xl font-black uppercase tracking-tighter italic leading-none ${
-                            setScores.user > setScores.opponent ? 'text-blue-500' : 
-                            setScores.user < setScores.opponent ? 'text-red-500' : 'text-white'
-                        }`}>
-                            {setScores.user > setScores.opponent ? 'CHIẾN THẮNG' : setScores.user === setScores.opponent ? 'HÒA' : 'THẤT BẠI'}
-                        </h1>
-                        <p className="text-gray-500 font-bold uppercase tracking-widest mt-4 italic text-sm">Trận đấu đã kết thúc</p>
+                <div className="fixed inset-0 z-[70] bg-neutral-950 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+                    <div className="absolute inset-0 z-0">
+                        <div className={`absolute inset-0 ${setScores.user > setScores.opponent ? 'bg-blue-900/60' : setScores.user < setScores.opponent ? 'bg-red-900/60' : 'bg-neutral-900/60'} mix-blend-overlay fixed inset-0`}></div>
+                        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/80 to-neutral-950/20 fixed inset-0"></div>
+                        <div className="absolute inset-0 bg-grid-pattern opacity-20 pointer-events-none fixed inset-0"></div>
                     </div>
 
-                    <div className="relative grid grid-cols-2 gap-4 md:gap-8 w-full max-w-5xl mb-12">
-                         {/* My Score Card */}
-                         <div className={`relative p-6 md:p-10 rounded-[35px] md:rounded-[45px] border-2 ${setScores.user >= setScores.opponent ? 'bg-blue-600/10 border-blue-500/30' : 'bg-white/5 border-white/5'} backdrop-blur-xl overflow-hidden animate-in slide-in-from-left-20 duration-1000`}>
-                             {/* Set Score Indicator (Right Inner) */}
-                             <div className="absolute top-1/2 -right-4 mx-8 -translate-y-1/2 text-[100px] md:text-[180px] font-black text-blue-500/10 italic leading-none select-none pointer-events-none">
-                                 {setScores.user}
+                    <div className="min-h-full flex flex-col items-center justify-center p-4 py-8 relative z-10 text-center">
+                        <div className="relative mb-8 md:mb-12 animate-in zoom-in-50 duration-700 mt-8 md:mt-0">
+                            <h1 className="text-5xl md:text-9xl font-black uppercase tracking-tighter italic leading-none text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 drop-shadow-2xl">
+                                {setScores.user > setScores.opponent ? 'VICTORY' : setScores.user === setScores.opponent ? 'DRAW' : 'DEFEAT'}
+                            </h1>
+                            <div className="w-32 h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent mx-auto mt-4"></div>
+                        </div>
+
+                        <div className="relative grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-16 w-full max-w-4xl mb-12 z-10">
+                             {/* My Score */}
+                             <div className={`relative p-6 md:p-8 border-2 ${setScores.user >= setScores.opponent ? 'bg-blue-900/40 border-blue-500/50' : 'bg-neutral-900/40 border-white/10'} backdrop-blur-xl animate-in slide-in-from-left-20 duration-1000 overflow-hidden group`}
+                                  style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                 
+                                 <div className="absolute -right-4 top-1/2 -translate-y-1/2 text-[8rem] md:text-9xl font-black text-white/5 italic select-none">{setScores.user}</div>
+                                 
+                                 <div className="relative z-10 flex flex-col items-center">
+                                      <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-white/20 mb-4 shadow-2xl skew-x-[-5deg]">
+                                         <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover scale-110" alt="Me" />
+                                     </div>
+                                     <div className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] mb-1">Điểm số các round</div>
+                                     <div className="text-4xl md:text-5xl font-black text-white tracking-tighter mb-4">{userScore}</div>
+                                 </div>
                              </div>
 
-                             <div className="relative z-10 flex flex-col items-center">
-                                  <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
-                                     <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover" alt="Me" />
-                                 </div>
-                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Điểm của bạn</div>
-                                 <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{userScore}</div>
-                                 <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${userScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
-                                     Điểm chi tiết: {roundScoresRecord.map(r => r.user).join('/')}
-                                 </div>
-                                 <div className="mt-1 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                                     Hiệu suất: {(roundScoresRecord.reduce((a, b) => a + b.user, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
+                             {/* Opponent Score */}
+                             <div className={`relative p-6 md:p-8 border-2 ${setScores.opponent > setScores.user ? 'bg-red-900/40 border-red-500/50' : 'bg-neutral-900/40 border-white/10'} backdrop-blur-xl animate-in slide-in-from-right-20 duration-1000 overflow-hidden group`}
+                                  style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                 
+                                 <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-[8rem] md:text-9xl font-black text-white/5 italic select-none">{setScores.opponent}</div>
+
+                                 <div className="relative z-10 flex flex-col items-center">
+                                      <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-white/20 mb-4 shadow-2xl skew-x-[5deg]">
+                                         <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover scale-110" alt="Opponent" />
+                                     </div>
+                                     <div className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] mb-1">Điểm số các round</div>
+                                     <div className="text-4xl md:text-5xl font-black text-white tracking-tighter mb-4">{opponentScore}</div>
                                  </div>
                              </div>
-                         </div>
+                        </div>
 
-                         {/* Opponent Score Card */}
-                         <div className={`relative p-6 md:p-10 rounded-[35px] md:rounded-[45px] border-2 ${setScores.opponent > setScores.user ? 'bg-red-600/10 border-red-500/30' : 'bg-white/5 border-white/5'} backdrop-blur-xl overflow-hidden animate-in slide-in-from-right-20 duration-1000`}>
-                             {/* Set Score Indicator (Left Inner) */}
-                             <div className="absolute top-1/2 -left-4 mx-8 -translate-y-1/2 text-[100px] md:text-[180px] font-black text-red-500/10 italic leading-none select-none pointer-events-none">
-                                 {setScores.opponent}
-                             </div>
+                        {isRanked && showMMRSummary ? (
+                            <div className="fixed inset-0 z-[120] bg-neutral-950 flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-500 overflow-hidden p-4">
+                                 {/* Background Glows */}
+                                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-fuchsia-600/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-                             <div className="relative z-10 flex flex-col items-center">
-                                  <div className="w-20 h-20 md:w-28 md:h-28 rounded-[25px] md:rounded-[30px] overflow-hidden border-2 border-white/10 mb-4 shadow-2xl">
-                                     <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
-                                 </div>
-                                 <div className="text-gray-400 font-black uppercase text-[8px] md:text-[10px] tracking-[0.4em] mb-2 text-center">Điểm đối thủ</div>
-                                 <div className="text-4xl md:text-6xl font-black text-white tracking-tighter mb-2">{opponentScore}</div>
-                                 <div className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-bold ${opponentScore >= 10 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-100'}`}>
-                                     Điểm chi tiết: {roundScoresRecord.map(r => r.opponent).join('/')}
-                                 </div>
-                                 <div className="mt-1 text-gray-500 text-[10px] font-bold uppercase tracking-wider">
-                                     Hiệu suất: {(roundScoresRecord.reduce((a, b) => a + b.opponent, 0) / (roundScoresRecord.length || 1)).toFixed(1)}
-                                 </div>
-                             </div>
-                         </div>
-                    </div>
+                                 <MMRSummaryOverlay 
+                                    mmr={userNewMMR} 
+                                    change={mmrChange} 
+                                    avatarUrl={profile?.avatar_url || undefined}
+                                    onDone={async () => {
+                                        setIsNavigatingAway(true);
+                                        await leaveRoom();
+                                        navigate('/dashboard/arena');
+                                    }}
+                                 />
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={async () => {
+                                    const isWin = setScores.user > setScores.opponent;
+                                    const isDraw = setScores.user === setScores.opponent;
+                                    const result = isWin ? 'Chiến thắng' : (isDraw ? 'Hòa' : 'Thất bại');
 
-                    {isRanked && showMMRSummary ? (
-                        <div className="absolute inset-0 z-[120] bg-neutral-950 flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
-                             {/* Background Glows */}
-                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-fuchsia-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-                             <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-[300px] h-[300px] bg-purple-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none"></div>
-                             <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[300px] h-[300px] bg-blue-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none" style={{ animationDelay: '1s' }}></div>
+                                    let mode = 'Normal';
+                                    if (isRanked) mode = 'Ranked';
+                                    else if (isBot) mode = 'Bot';
+                                    else if ((location as any).state?.isCustom) mode = 'Custom';
 
-                             <MMRSummaryOverlay 
-                                mmr={userNewMMR} 
-                                change={mmrChange} 
-                                avatarUrl={profile?.avatar_url || undefined}
-                                onDone={async () => {
+                                    const userRoundScores = roundScoresRecord.map(r => r.user);
+                                    let maxRounds = 3; 
+                                    if (isRanked) maxRounds = 5; 
+                                    else if (roomSettings?.format?.startsWith('Bo')) {
+                                        maxRounds = parseInt(roomSettings.format.replace('Bo', '')) || 3;
+                                    }
+
+                                    while (userRoundScores.length < maxRounds) {
+                                        userRoundScores.push(0);
+                                    }
+                                    
+                                    try {
+                                        if (!historySavedRef.current) {
+                                            historySavedRef.current = true;
+                                            await supabase.from('game_history').insert({
+                                                user_id: userId,
+                                                opponent_id: opponent?.id,
+                                                room_id: roomId,
+                                                result: result,
+                                                score_user: setScores.user,
+                                                score_opponent: setScores.opponent,
+                                                mode: mode,
+                                                mmr_change: isRanked ? (mmrChange || 0) : 0,
+                                                round_scores: userRoundScores
+                                            });
+                                        }
+                                    } catch (err) {
+                                        console.error("Failed to save game history:", err);
+                                    }
+
+                                    if (isRanked) {
+                                        if (userId && profile) {
+                                            if (!isDraw) {
+                                                const currentMMR = profile.mmr ?? null;
+                                                const calculatedNewMMR = calculateMMRChange(currentMMR, isWin);
+                                                const change = calculatedNewMMR - (currentMMR || 0);
+                                                
+                                                setMmrChange(change);
+                                                setUserNewMMR(calculatedNewMMR);
+
+                                                await supabase
+                                                    .from('profiles')
+                                                    .update({ mmr: calculatedNewMMR })
+                                                    .eq('id', userId);
+                                            } else {
+                                                setMmrChange(0);
+                                                setUserNewMMR(profile.mmr ?? 0);
+                                            }
+                                        }
+                                        setShowMMRSummary(true);
+                                        return;
+                                    }
+
                                     setIsNavigatingAway(true);
                                     await leaveRoom();
                                     navigate('/dashboard/arena');
                                 }}
-                             />
-                        </div>
-                    ) : (
-                        <button 
-                            onClick={async () => {
-                                // SAVE GAME HISTORY
-                                const isWin = setScores.user > setScores.opponent;
-                                const isDraw = setScores.user === setScores.opponent;
-                                const result = isWin ? 'Chiến thắng' : (isDraw ? 'Hòa' : 'Thất bại');
-
-                                // Determine Mode
-                                let mode = 'Normal';
-                                if (isRanked) mode = 'Ranked';
-                                else if (isBlitzmatch) mode = 'Blitz';
-                                // Assuming Custom matches might set a specific flag or we default to Normal if unranked & not blitz
-                                // If you have an isCustom flag, use it here. For now:
-                                else if ((location as any).state?.isCustom) mode = 'Custom';
-
-                                // Prepare Round Scores (User's scores per round) - PAD WITH 0s
-                                const userRoundScores = roundScoresRecord.map(r => r.user);
-                                
-                                // Calculate max rounds based on format
-                                let maxRounds = 3; // Default Bo3
-                                if (isRanked) maxRounds = 5; // Ranked is Bo5
-                                else if (roomSettings?.format?.startsWith('Bo')) {
-                                    maxRounds = parseInt(roomSettings.format.replace('Bo', '')) || 3;
-                                }
-
-                                // Pad with 0s for unplayed rounds
-                                while (userRoundScores.length < maxRounds) {
-                                    userRoundScores.push(0);
-                                }
-                                
-                                try {
-                                    // Save history for CURRENT USER only (if not already saved)
-                                    if (!historySavedRef.current) {
-                                        historySavedRef.current = true;
-                                        await supabase.from('game_history').insert({
-                                            user_id: userId,
-                                            opponent_id: opponent?.id,
-                                            room_id: roomId,
-                                            result: result,
-                                            score_user: setScores.user,
-                                            score_opponent: setScores.opponent,
-                                            mode: mode,
-                                            mmr_change: isRanked ? (mmrChange || 0) : 0,
-                                            round_scores: userRoundScores
-                                        });
-                                    }
-                                } catch (err) {
-                                    console.error("Failed to save game history:", err);
-                                }
-
-                                if (isRanked) {
-                                    // 1. Calculate & Save MMR if not already done
-                                    if (userId && profile) {
-                                        if (!isDraw) {
-                                            const currentMMR = profile.mmr ?? null;
-                                            const calculatedNewMMR = calculateMMRChange(currentMMR, isWin);
-                                            const change = calculatedNewMMR - (currentMMR || 0);
-                                            
-                                            setMmrChange(change);
-                                            setUserNewMMR(calculatedNewMMR);
-
-                                            await supabase
-                                                .from('profiles')
-                                                .update({ mmr: calculatedNewMMR })
-                                                .eq('id', userId);
-                                        } else {
-                                            setMmrChange(0);
-                                            setUserNewMMR(profile.mmr ?? 0);
-                                        }
-                                    }
-                                    // 2. Show Summary Screen
-                                    setShowMMRSummary(true);
-                                    return;
-                                }
-
-                                setIsNavigatingAway(true);
-                                await leaveRoom();
-                                navigate('/dashboard/arena');
-                            }}
-                            className="relative px-12 py-5 rounded-[25px] bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.3)] z-[75]"
-                        >
-                            {isRanked ? 'Tiếp theo' : 'Quay lại Arena'}
-                        </button>
-                    )}
+                                className="relative px-12 py-5 bg-white text-black font-black uppercase tracking-widest hover:scale-105 transition-transform active:scale-95 shadow-[0_0_50px_rgba(255,255,255,0.4)] z-[75] mb-8 md:mb-0"
+                                style={{ clipPath: 'polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px)' }}
+                            >
+                                {isRanked ? 'Continue to Rank Update' : 'Quay lại sảnh chính'}
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
+            
             {/* Round Intro Overlay (Black Screen) */}
             {showRoundIntro && (
                 <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-in fade-in duration-700">
                     <div className="flex flex-col items-center gap-4 animate-in zoom-in-50 duration-500">
                          <div className="w-20 h-1 bg-white/20 rounded-full mb-4"></div>
-                         <h1 className="text-6xl md:text-9xl font-black text-white tracking-[0.2em] italic">HIỆP {currentRound}</h1>
+                         <h1 className="text-6xl md:text-9xl font-black text-white tracking-[0.2em] italic">ROUND {currentRound}</h1>
                          <div className="w-20 h-1 bg-white/20 rounded-full mt-4"></div>
+                         <p className="text-gray-500 font-bold uppercase tracking-[0.5em] animate-pulse">Bắt đầu round đấu...</p>
                     </div>
                 </div>
             )}
 
             {/* Set Result (Face-off Style) Overlay */}
             {showSetResults && (
-                <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-neutral-950 px-4 animate-in fade-in duration-500">
-                    <div className="absolute inset-0 bg-gradient-to-b from-blue-600/10 via-transparent to-red-600/10"></div>
-                    
-                    <div className="relative mb-8 text-center">
-                        <h2 className="text-3xl md:text-6xl font-black text-white uppercase italic tracking-tighter mb-4 animate-in slide-in-from-top-10 duration-700">HIỆP {currentRound} KẾT THÚC</h2>
-                        <div className="inline-flex flex-col items-center gap-2">
-                            <div className="px-10 py-3 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl">
-                                <span className="text-sm font-bold text-gray-400 uppercase tracking-[0.3em] mb-1 block">Tỉ số trận đấu</span>
-                                <div className="text-4xl md:text-6xl font-black text-white tracking-widest">
-                                    <span className="text-blue-500">{setScores.user}</span>
-                                    <span className="mx-4 text-white/20">-</span>
-                                    <span className="text-red-500">{setScores.opponent}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="relative w-full max-w-5xl grid grid-cols-2 items-center gap-4 md:gap-12 px-2 md:px-0">
-                        <div className="flex flex-col items-center gap-4 md:gap-6">
-                            <div className="relative">
-                                <div className="w-24 h-24 md:w-56 md:h-56 rounded-[30px] md:rounded-[40px] border-4 border-blue-500 shadow-[0_0_50px_rgba(59,130,246,0.3)] p-1 animate-in slide-in-from-left-20 duration-1000 rotate-[-4deg]">
-                                    <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full rounded-[24px] md:rounded-[34px] object-cover" alt="Me" />
-                                </div>
-                                <div className="absolute -top-3 -right-3 px-3 py-1 bg-blue-600 rounded-lg text-[10px] md:text-sm font-black italic shadow-xl">+{roundPointsHistory.user}</div>
-                            </div>
-                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">{profile?.display_name || "BẠN"}</div>
-                        </div>
-
-                        <div className="flex flex-col items-center gap-4 md:gap-6">
-                            <div className="relative">
-                                <div className="w-24 h-24 md:w-56 md:h-56 rounded-[30px] md:rounded-[40px] border-4 border-red-500 shadow-[0_0_50px_rgba(239,68,68,0.3)] p-1 animate-in slide-in-from-right-20 duration-1000 rotate-[4deg]">
-                                    <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full rounded-[24px] md:rounded-[34px] object-cover" alt={opponent?.display_name || "ĐỐI THỦ"} />
-                                </div>
-                                <div className="absolute -top-3 -left-3 px-3 py-1 bg-red-600 rounded-lg text-[10px] md:text-sm font-black italic shadow-xl">+{roundPointsHistory.opponent}</div>
-                            </div>
-                            <div className="text-lg md:text-2xl font-black text-white uppercase tracking-tighter text-center">{opponent?.display_name || "ĐỐI THỦ"}</div>
-                        </div>
+                <div className="fixed inset-0 z-[90] bg-neutral-950 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar">
+                    <div className="min-h-full flex flex-col items-center justify-center p-4 py-8 relative">
+                        <div className="absolute inset-0 bg-dot-pattern opacity-10 fixed"></div>
+                        <div className="absolute top-0 w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent fixed"></div>
+                        <div className="absolute bottom-0 w-full h-px bg-gradient-to-r from-transparent via-white/20 to-transparent fixed"></div>
                         
-                        {/* Overlay VS Text absolute centered */}
-                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-5xl md:text-8xl font-black italic text-white/5 tracking-tighter select-none pointer-events-none">VS</div>
+                        <div className="relative mb-12 text-center z-10">
+                            <h2 className="text-3xl md:text-5xl font-black text-white uppercase italic tracking-tighter mb-8 animate-in slide-in-from-top-10 duration-700">ROUND {currentRound} COMPLETE</h2>
+                            
+                            <div className="px-12 py-6 bg-white/5 border border-white/10 backdrop-blur-xl relative" style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-[0.4em] mb-2 block">Match Score</span>
+                                <div className="text-6xl md:text-8xl font-black text-white tracking-widest flex items-center justify-center gap-8">
+                                    <span className={setScores.user > setScores.opponent ? 'text-blue-500' : 'text-gray-500'}>{setScores.user}</span>
+                                    <div className="h-12 w-px bg-white/10 rotate-12"></div>
+                                    <span className={setScores.opponent > setScores.user ? 'text-red-500' : 'text-gray-500'}>{setScores.opponent}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="relative w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 items-center gap-12 md:gap-12 px-2 md:px-0 z-10">
+                            {/* Player 1 Stats */}
+                            <div className="flex flex-col items-center gap-6">
+                                <div className="relative">
+                                    <div className="w-24 h-24 md:w-48 md:h-48 rounded-3xl border-2 border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.3)] bg-neutral-900 p-1 rotate-[-3deg]"
+                                         style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
+                                        <img src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} className="w-full h-full object-cover grayscale-[0.5]" alt="Me" />
+                                    </div>
+                                    <div className="absolute -top-3 -right-3 px-4 py-2 bg-blue-600 font-black text-xl italic shadow-xl z-20">
+                                        +{roundPointsHistory.user}
+                                    </div>
+                                </div>
+                                <div className="text-xl font-black text-white uppercase tracking-tighter">{profile?.display_name || "BẠN"}</div>
+                            </div>
+
+                            {/* Player 2 Stats */}
+                            <div className="flex flex-col items-center gap-6">
+                                <div className="relative">
+                                    <div className="w-24 h-24 md:w-48 md:h-48 rounded-3xl border-2 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)] bg-neutral-900 p-1 rotate-[3deg]"
+                                         style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
+                                        <img src={opponent?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${opponent?.id || 'opponent'}`} className="w-full h-full object-cover grayscale-[0.5]" alt="Opponent" />
+                                    </div>
+                                    <div className="absolute -top-3 -left-3 px-4 py-2 bg-red-600 font-black text-xl italic shadow-xl z-20">
+                                        +{roundPointsHistory.opponent}
+                                    </div>
+                                </div>
+                                <div className="text-xl font-black text-white uppercase tracking-tighter">{opponent?.display_name || "ĐỐI THỦ"}</div>
+                            </div>
+                            
+                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-full bg-gradient-to-b from-transparent via-white/10 to-transparent hidden md:block"></div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1348,11 +1452,11 @@ const GamePlayView = () => {
             {isMatchEnding && (
                 <div className="fixed inset-0 z-[110] bg-black flex items-center justify-center animate-in fade-in duration-700">
                     <div className="text-center animate-in zoom-in-150 duration-700">
-                         <h1 className="text-5xl md:text-8xl font-black text-white uppercase tracking-widest italic leading-none">TRẬN ĐẤU<br/>KẾT THÚC</h1>
-                         <div className="mt-8 flex justify-center gap-1">
-                             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce delay-0"></div>
-                             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce delay-150"></div>
-                             <div className="w-4 h-4 rounded-full bg-blue-500 animate-bounce delay-300"></div>
+                         <h1 className="text-6xl md:text-9xl font-black text-white uppercase tracking-widest italic leading-none mb-4">TRẬN ĐẤU<br/>KẾT THÚC</h1>
+                         <div className="flex justify-center gap-2">
+                             <div className="w-3 h-3 bg-red-500 animate-bounce delay-0"></div>
+                             <div className="w-3 h-3 bg-red-500 animate-bounce delay-150"></div>
+                             <div className="w-3 h-3 bg-red-500 animate-bounce delay-300"></div>
                          </div>
                     </div>
                 </div>
@@ -1366,75 +1470,90 @@ const MMRSummaryOverlay = ({ mmr, change, onDone, avatarUrl }: { mmr: number | n
     
     return (
         <div className="relative flex flex-col items-center text-center max-w-4xl w-full px-4 z-10 animate-in fade-in slide-in-from-bottom-10 duration-700 h-full max-h-screen overflow-y-auto py-8 no-scrollbar">
-            <h2 className="text-[10px] md:text-sm font-black text-gray-500 uppercase tracking-[0.5em] mb-6 shrink-0">Chi tiết hạng</h2>
+            <h2 className="text-[10px] md:text-sm font-black text-gray-500 uppercase tracking-[0.5em] mb-8 shrink-0 flex items-center gap-4">
+                <div className="h-px w-8 bg-gray-500/30"></div>
+                RANK PERFORMANCE
+                <div className="h-px w-8 bg-gray-500/30"></div>
+            </h2>
             
-            <div className="flex flex-col items-center justify-center w-full mb-6 shrink-0">
+            <div className="flex flex-col items-center justify-center w-full mb-8 shrink-0">
                 {/* Rank Circle Column */}
                 <div className="flex flex-col items-center">
-                    <div className="relative mb-4">
+                    <div className="relative mb-6">
+                        <div className="absolute inset-0 bg-red-500/20 blur-2xl rounded-full animate-pulse"></div>
                         <RankBadge mmr={mmr} size="xl" />
                         
                         {change !== 0 && (
-                            <div className={`absolute top-0 -right-2 px-3 py-1.5 rounded-xl font-black text-base shadow-2xl border-2 animate-in slide-in-from-left-4 duration-500 delay-700 fill-mode-both flex items-center gap-1 ${
-                                change > 0 ? 'bg-green-500/20 border-green-500/30 text-green-400' : 'bg-red-500/20 border-red-500/30 text-red-400'
-                            }`}>
+                            <div className={`absolute top-0 -right-8 px-4 py-2 font-black text-xl shadow-2xl animate-in slide-in-from-left-4 duration-500 delay-700 fill-mode-both flex items-center gap-1 ${
+                                change > 0 ? 'bg-green-500 text-black' : 'bg-red-500 text-white'
+                            }`} style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
                                 {change > 0 ? `+${change}` : change}
                             </div>
                         )}
                     </div>
 
-                    <h3 className="text-3xl md:text-4xl font-black text-white uppercase italic tracking-tighter mb-2 italic drop-shadow-2xl">
-                        {rank.tier} {rank.division}
+                    <h3 className="text-4xl md:text-6xl font-black text-white uppercase italic tracking-tighter mb-4 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+                        {rank.tier} <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">{rank.division}</span>
                     </h3>
                     
-                    <div className="bg-red-500/10 border-2 border-red-500/30 px-5 py-1.5 rounded-xl animate-in zoom-in-75 duration-500 delay-300 fill-mode-both">
-                        <span className="text-xl font-black text-white italic tracking-tighter">
-                            {mmr} <span className="text-[10px] opacity-40 font-black uppercase tracking-widest text-gray-400 ml-1">MMR</span>
+                    <div className="bg-neutral-900 border border-white/10 px-6 py-2 relative overflow-hidden group" style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}>
+                        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <span className="text-2xl font-black text-white italic tracking-tighter flex items-baseline gap-2">
+                            {mmr} <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">MMR POINTS</span>
                         </span>
                     </div>
                 </div>
             </div>
 
             {/* Bottom Section: Progress Bar and Avatar Button in a row */}
-            <div className="flex flex-col md:flex-row items-center justify-center gap-6 w-full max-w-4xl bg-white/5 border border-white/10 rounded-[30px] p-6 backdrop-blur-md shrink-0 mb-4">
+            <div className="flex flex-col md:flex-row items-center justify-center gap-8 w-full max-w-5xl bg-neutral-900/60 border border-white/5 p-8 backdrop-blur-xl shrink-0" 
+                 style={{ clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)' }}>
+                
                 {/* Progress Bar Side */}
-                <div className="flex-1 w-full space-y-3">
-                    <div className="flex justify-between items-center text-[9px] md:text-xs font-black uppercase tracking-[0.2em] text-gray-500">
-                        <span className="text-blue-400">Tiến trình thăng hạng</span>
-                        <span className="text-white/40">{rank.nextMMR && (rank.nextMMR - (mmr || 0))} MMR CÒN LẠI</span>
+                <div className="flex-1 w-full space-y-4">
+                    <div className="flex justify-between items-end">
+                        <span className="text-xs font-black uppercase tracking-[0.2em] text-blue-400">Progression</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">{rank.nextMMR && (rank.nextMMR - (mmr || 0))} MMR TO PROMOTION</span>
                     </div>
-                    <div className="h-3 w-full bg-white/10 rounded-full overflow-hidden p-[2px]">
+                    
+                    <div className="h-4 w-full bg-black/50 border border-white/10 p-[2px] skew-x-[-10deg]">
                         <div 
-                            className="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full transition-all duration-[2s] delay-500 ease-out shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
+                            className="h-full bg-gradient-to-r from-blue-600 via-fuchsia-500 to-white rounded-[1px] transition-all duration-[2s] delay-500 ease-out shadow-[0_0_15px_rgba(37,99,235,0.4)] relative overflow-hidden" 
                             style={{ width: `${rank.progress}%` }}
-                        ></div>
+                        >
+                            <div className="absolute inset-0 w-full h-full bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)] animate-[shimmer_2s_infinite]"></div>
+                        </div>
                     </div>
-                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest text-left opacity-60">Tiếp tục hành trình để đạt mốc rank cao hơn</p>
+                    
+                    <p className="text-[10px] text-gray-600 uppercase font-bold tracking-widest text-left">Completing matches increases your rank rating.</p>
                 </div>
 
                 {/* Vertical Divider for desktop */}
-                <div className="hidden md:block w-px h-20 bg-white/10"></div>
+                <div className="hidden md:block w-px h-24 bg-gradient-to-b from-transparent via-white/10 to-transparent"></div>
 
-                {/* Avatar Exit Button - Reduced size to match lower profile */}
-                <div className="flex flex-col items-center gap-3">
+                {/* Avatar Exit Button */}
+                <div className="flex flex-col items-center gap-4">
                     <button 
                         onClick={onDone}
-                        className="group relative w-32 h-32 md:w-36 md:h-36 shrink-0 rounded-full p-1.5 bg-neutral-950 border-4 border-white/10 hover:border-fuchsia-500 transition-all duration-500 active:scale-95 shadow-2xl"
+                        className="group relative w-24 h-24 shrink-0 p-1 bg-neutral-800 transition-all duration-300 hover:scale-105 active:scale-95"
+                        style={{ clipPath: 'polygon(20% 0, 80% 0, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0 80%, 0 20%)' }}
                     >
-                        <div className="w-full h-full rounded-full overflow-hidden relative border border-white/5">
+                        <div className="w-full h-full relative overflow-hidden" style={{ clipPath: 'polygon(20% 0, 80% 0, 100% 20%, 100% 80%, 80% 100%, 20% 100%, 0 80%, 0 20%)' }}>
                             <img 
                                 src={avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"} 
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 grayscale group-hover:grayscale-0" 
                                 alt="Exit" 
                             />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
-                                <LogOut size={20} className="text-white mb-1" />
-                                <div className="text-[10px] font-black text-white uppercase tracking-[0.1em]">QUAY LẠI</div>
+                            <div className="absolute inset-0 bg-fuchsia-600/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                <LogOut size={24} className="text-white mb-1" />
+                                <div className="text-[8px] font-black text-white uppercase tracking-widest">EXIT</div>
                             </div>
                         </div>
-                        <div className="absolute inset-0 rounded-full bg-fuchsia-500/10 blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     </button>
-                    <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.3em] animate-pulse">Bấm Avatar để tiếp tục</p>
+                    <div className="flex items-center gap-2">
+                        <div className="w-1 h-1 bg-fuchsia-500 rounded-full animate-ping"></div>
+                        <p className="text-[9px] font-black text-gray-500 uppercase tracking-[0.2em]">CLICK TO LEAVE</p>
+                    </div>
                 </div>
             </div>
         </div>

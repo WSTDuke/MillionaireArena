@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate, NavLink, Outlet, useLocation, Link } from "react-router-dom";
+import { useRef, useState, useEffect, type ElementType } from "react";
+import { useNavigate, NavLink, Outlet, Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getRankFromMMR } from "../../lib/ranking";
 import {
@@ -11,19 +11,35 @@ import {
   LogOut,
   Users,
   ChevronRight,
-  Bookmark,
-  Plus,
+  Loader2,
   Shield,
+  User,
+  Gamepad2,
+  Coins,
 } from "lucide-react";
+
+interface PlayerResult {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  email: string | null;
+  mmr: number | null;
+}
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null); // From Supabase Auth
+  const [profile, setProfile] = useState<{ id: string; display_name: string | null; avatar_url: string | null; mmr: number | null } | null>(null); // From profiles table
   const [dashboardCache, setDashboardCache] = useState<Record<string, any>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<PlayerResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const getData = async () => {
       const {
         data: { user },
@@ -42,295 +58,368 @@ const DashboardPage = () => {
     getData();
   }, []);
 
+  // --- SEARCH LOGIC ---
+  useEffect(() => {
+    const searchPlayers = async () => {
+      const trimmedQuery = searchQuery.trim();
+
+      // Rule: Min length 3
+      if (trimmedQuery.length < 3) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      // Rule: Numeric-only query must be >= 5 chars to avoid "random ID" noise
+      const isNumeric = /^\d+$/.test(trimmedQuery);
+      if (isNumeric && trimmedQuery.length < 5) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        // Prefix Search (query%) for both Email and Display Name
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_url, email, mmr")
+          .or(`email.ilike.${trimmedQuery}%,display_name.ilike.${trimmedQuery}%`)
+          .limit(5);
+
+        if (!error && data) {
+          setSearchResults(data);
+        }
+      } catch (err) {
+        console.error("Search error:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const timer = setTimeout(searchPlayers, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Close search results on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchResults(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/login");
   };
 
-  const isLinkActive = (path: string) => {
-    // Exact match for root dashboard (overview)
-    if (path === "/dashboard" && location.pathname === "/dashboard")
-      return true;
-    // For other paths, check if it starts with the path (e.g. /dashboard/settings)
-    if (path !== "/dashboard" && location.pathname.startsWith(path))
-      return true;
-    return false;
-  };
 
-  const getPageInfo = () => {
-      return { title: 'SẢNH ĐẤU', bg: 'bg-neutral-800' };
-  };
-
-  const pageInfo = getPageInfo();
+  const rankInfo = getRankFromMMR(profile?.mmr ?? 0);
 
   return (
-    <div className="h-screen bg-black text-white font-sans flex selection:bg-fuchsia-500 selection:text-white overflow-hidden">
-      {/* --- SIDEBAR --- */}
-      <aside className="w-64 hidden lg:flex flex-col border-r border-white/10 bg-neutral-950/50 backdrop-blur-xl h-screen fixed top-0 left-0 z-50">
-        {/* Logo */}
-        <Link to="/dashboard">
-          <div className="h-20 flex items-center gap-3 px-6 border-b border-white/5 justify-center">
-            <div className="text-xl font-bold">
-              <span className="text-white">MillionMind</span>
-              <span className="text-fuchsia-500">Arena</span>
-            </div>
-          </div>
-        </Link>
-        {/* Navigation */}
-        <nav className="flex-1 justify-between h-full">
-          <div className="flex-1 space-y-2 p-4">
-            <NavItem
-              icon={LayoutDashboard}
-              label="Tổng quan"
-              to="/dashboard"
-              active={isLinkActive("/dashboard")}
-            />
-            <NavItem
-              icon={Swords}
-              label="Đấu trường"
-              to="/dashboard/arena"
-              active={isLinkActive("/dashboard/arena")}
-            />
-             <NavItem
-              icon={Bookmark}
-              label="Xếp hạng"
-              to="/dashboard/ranking"
-              active={isLinkActive("/dashboard/ranking")}
-            />
-            <NavItem
-              icon={Trophy}
-              label="Giải đấu"
-              to="/dashboard/tournaments"
-              active={isLinkActive("/dashboard/tournaments")}
-            />
-           
-            <NavItem
-              icon={Shield}
-              label="Clan / Đội"
-              to="/dashboard/clan"
-              active={isLinkActive("/dashboard/clan")}
-            />
-            <div className="pt-4 pb-2">
-              <div className="h-px bg-white/10 mx-2"></div>
-            </div>
-          </div>
+    <div className="flex h-screen bg-black text-white font-sans overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-20 md:w-64 bg-neutral-900 border-r border-white/5 flex flex-col z-50">
+        <div className="p-6 flex items-center gap-3">
+          <span className="hidden md:block font-black text-xl tracking-tighter uppercase">
+            MillionMind <span className="text-fuchsia-500">ARENA</span>
+          </span>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-2 py-6">
+          <NavItem
+            icon={LayoutDashboard}
+            label="Tổng quan"
+            to="/dashboard"
+          />
+          <NavItem
+            icon={Swords}
+            label="Đấu trường"
+            to="/dashboard/arena"
+          />
+          <NavItem
+            icon={Trophy}
+            label="Giải đấu"
+            to="/dashboard/tournaments"
+          />
+          <NavItem
+            icon={Shield}
+            label="Bang hội"
+            to="/dashboard/clan"
+          />
+          <NavItem
+            icon={Users}
+            label="Bảng xếp hạng"
+            to="/dashboard/ranking"
+          />
         </nav>
 
-        {/* User Mini Profile (Bottom Sidebar) */}
-        <div className="p-4 border-t border-white/5 bg-neutral-900/50">
-          <UserProfileDropup
-            user={user}
-            profile={profile}
-            onLogout={handleLogout}
-            onSettings={() => navigate("/dashboard/settings")}
-            onProfile={() => navigate("/dashboard/profile")}
-          />
+        <div className="p-4 border-t border-white/5 relative" ref={userMenuRef}>
+          {showUserMenu && (
+            <div className="absolute bottom-full left-4 right-4 mb-2 bg-neutral-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 animate-in slide-in-from-bottom-2 duration-200 z-50">
+              <Link
+                to="/dashboard/profile"
+                className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+                onClick={() => setShowUserMenu(false)}
+              >
+                <User size={18} />
+                <span className="font-bold text-xs uppercase tracking-widest">Hồ sơ</span>
+              </Link>
+              <Link
+                to="/dashboard/settings"
+                className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+                onClick={() => setShowUserMenu(false)}
+              >
+                <Settings size={18} />
+                <span className="font-bold text-xs uppercase tracking-widest">Cài đặt</span>
+              </Link>
+              <div className="h-px bg-white/5 my-1 mx-2" />
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 text-red-500/70 hover:text-red-500 hover:bg-red-500/5 transition-all"
+              >
+                <LogOut size={18} />
+                <span className="font-bold text-xs uppercase tracking-widest">Thoát</span>
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            className={`w-full flex items-center gap-3 p-2 rounded-2xl transition-all hover:bg-white/5 ${showUserMenu ? 'bg-white/5' : ''}`}
+          >
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-tr from-fuchsia-600 to-purple-600 p-[1.5px] min-w-[40px]">
+              <div className="w-full h-full rounded-xl bg-neutral-950 p-0.5">
+                <img
+                  src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"}
+                  alt="Avatar"
+                  className="w-full h-full rounded-lg object-cover"
+                />
+              </div>
+            </div>
+            <div className="hidden md:flex flex-col items-start overflow-hidden">
+              <span className="font-black text-xs uppercase tracking-widest text-white truncate w-full text-left">
+                {profile?.display_name || "Chiến Binh"}
+              </span>
+              <span
+                className="text-[9px] font-black uppercase tracking-tighter"
+                style={{ color: rankInfo.color }}
+              >
+                {rankInfo.tier} {rankInfo.division}
+              </span>
+            </div>
+          </button>
         </div>
       </aside>
 
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 lg:ml-64 relative flex flex-col h-full">
-        {/* Background Glow Effect */}
-        <div className="absolute top-0 left-0 w-full h-[500px] bg-fuchsia-900/10 blur-[120px] pointer-events-none"></div>
-
-        {/* Header - TRAPEZOID STYLE - REFINED */}
-        <div className="relative h-16 shrink-0 mb-2 flex items-center justify-between px-6 z-50 bg-gradient-to-b from-neutral-900/80 to-transparent">
-            {/* Background Line (Top Border) */}
-            <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/5"></div>
-
-            {/* LEAVE LEFT EMPTY FOR NOW (Sidebar handles Nav) */}
-            <div className="flex items-center gap-6 h-full z-10 w-1/3">
-                 {/* Optional: Add Breadcrumbs here later */}
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col bg-black relative custom-scrollbar overflow-y-auto">
+        {/* Header / Top Bar */}
+        <header className="h-20 border-b border-white/5 flex items-center justify-between px-8 sticky top-0 bg-black/80 backdrop-blur-md z-40">
+          <div className="flex-1 max-w-xl relative" ref={searchRef}>
+            <div className="relative group py-4">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-fuchsia-500 transition-colors"
+                size={18}
+              />
+              <input
+                type="text"
+                placeholder="Tìm kiếm người chơi..."
+                className="w-1/2 bg-neutral-900/50 border border-white/5 rounded-2xl py-2.5 pl-12 pr-4 text-sm font-medium focus:outline-none focus:border-fuchsia-500/50 focus:bg-neutral-900 transition-all placeholder:text-gray-600"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSearchResults(true);
+                }}
+                onFocus={() => setShowSearchResults(true)}
+              />
             </div>
 
-            {/* Center: TRAPEZOID DYNAMIC TITLE */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-full">
-                   <Link to={"/dashboard/arena"}>
-                <div className={`relative w-[320px] h-full cursor-pointer ${pageInfo.bg} flex items-center justify-center shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)] transition-all duration-500 group`}
-                style={{ clipPath: 'polygon(0 0, 100% 0, 85% 100%, 15% 100%)' }}>
-                    {/* Inner Gradient/Shine */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
-                    
-                    {/* Text */}
-                    <div className="relative z-10 flex flex-col items-center -mt-1 ">
-                        <div className="flex items-center gap-4 text-sm font-black text-white/20 hover:text-white uppercase tracking-[0.25em] drop-shadow-md group-hover:text-fuchsia-100 transition-colors">
-                            <Swords size={16} className="mr-2" />
-                            {pageInfo.title}
-                        </div>
+            {/* Search Results Dropdown */}
+            {showSearchResults && (searchQuery.length >= 3 || isSearching) && (
+              <div className="absolute top-full left-0 w-1/2 right-0 bg-neutral-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="p-2">
+                  {isSearching ? (
+                    <div className="p-8 flex items-center justify-center gap-3 text-gray-500">
+                      <Loader2 className="animate-spin" size={20} />
+                      <span className="text-sm font-bold uppercase tracking-widest">
+                        Đang truy xuất dữ liệu...
+                      </span>
                     </div>
-                    
-                    {/* Bottom active line */}
-                    <div className="absolute bottom-0 w-1/2 h-[2px] bg-white/20 group-hover:bg-white/50 transition-colors"></div>
+                  ) : searchResults.length > 0 ? (
+                    <div className="space-y-1">
+                      {searchResults.map((player) => (
+                        <Link
+                          key={player.id}
+                          to={`/dashboard/profile?id=${player.id}`}
+                          onClick={() => setShowSearchResults(false)}
+                          className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl transition-colors group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-full border-2 border-fuchsia-500/20 p-0.5">
+                                <img
+                                  src={player.avatar_url || undefined}
+                                  alt={player.display_name || ""}
+                                  className="w-full h-full rounded-full object-cover border-2 border-black"
+                                />
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-bold text-sm text-white group-hover:text-fuchsia-400 transition-colors">
+                                {player.display_name}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-tighter">
+                                {player.email}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-fuchsia-500 bg-fuchsia-500/10 px-2 py-1 rounded-lg border border-fuchsia-500/20">
+                              {player.mmr ?? 0} MMR
+                            </span>
+                            <ChevronRight
+                              size={16}
+                              className="text-gray-700 group-hover:text-fuchsia-500 transition-colors"
+                            />
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-gray-500">
+                      <p className="text-sm font-bold uppercase tracking-widest">
+                        Không tìm thấy thực thể nào
+                      </p>
+                    </div>
+                  )}
                 </div>
-                </Link>
-            </div>
+              </div>
+            )}
+          </div>
 
-            {/* Right: Search & Coins */}
-            <div className="flex items-center justify-end gap-4 h-full z-10 w-1/3">
-                {/* Search Bar */}
-                <div className="hidden md:flex items-center bg-neutral-900 border border-white/10 rounded-full px-4 py-2 w-64 focus-within:border-fuchsia-500/50 transition-colors">
-                  <Search size={18} className="text-gray-500" />
-                  <input
-                    type="text"
-                    placeholder="Tìm kiếm người chơi..."
-                    className="bg-transparent border-none outline-none text-sm ml-2 w-full text-white placeholder-gray-600"
-                  />
+          {/* Center: Lobby Button - Tech Hub Hanging from top */}
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 h-full hidden lg:flex items-start">
+            <Link
+              to="/dashboard/arena"
+              className="relative group transition-all duration-300 pointer-events-auto"
+            >
+              {/* Outer Glow */}
+              <div className="absolute -inset-4 bg-fuchsia-500/10 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity rounded-full bg-fuchsia-600/20" />
+              
+              <div 
+                className="bg-neutral-900 border-x border-b border-fuchsia-500/30 px-24 pb-3 pt-5 relative group-hover:border-fuchsia-400 overflow-hidden transition-all active:translate-y-0.5"
+                style={{
+                  clipPath: 'polygon(0 0, 100% 0, 85% 100%, 15% 100%)'
+                }}
+              >
+                {/* Background Tech Tint */}
+                <div className="absolute inset-0 bg-fuchsia-500/5 group-hover:bg-fuchsia-500/10 transition-colors" />
+                
+                {/* Content */}
+                <div className="flex flex-col items-center gap-1 relative z-10">
+                   <div className="p-1 rounded bg-fuchsia-500/10 border border-fuchsia-500/20 group-hover:bg-fuchsia-600 group-hover:border-fuchsia-400 transition-all duration-300">
+                      <Gamepad2 size={14} className="text-fuchsia-400 group-hover:text-white transition-colors" />
+                   </div>
+                   <span className="font-black text-[10px] uppercase tracking-[0.4em] text-fuchsia-500 group-hover:text-fuchsia-300 group-hover:drop-shadow-[0_0_8px_#d946ef] transition-all">
+                     Sảnh đấu
+                   </span>
                 </div>
 
-                {/* Gold Balance & Add button */}
-                <div className="flex items-center gap-3 bg-neutral-900/50 border border-white/5 rounded-full px-4 py-1.5 hover:border-white/10 transition-all select-none">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg leading-none">🪙</span>
-                    <span className="text-sm font-black text-yellow-500">
-                      {profile?.gold?.toLocaleString() || 0}
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => navigate("/dashboard/payment")}
-                    className="w-6 h-6 flex items-center justify-center rounded-full bg-fuchsia-600/20 hover:bg-fuchsia-600 text-fuchsia-400 hover:text-white transition-all border border-fuchsia-500/30"
-                    title="Nạp vàng"
-                  >
-                    <Plus size={14} strokeWidth={3} />
-                  </button>
+                {/* Scanline Ornament */}
+                <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-400 to-transparent opacity-50" />
+                
+                {/* Cyber Scanline Loop */}
+                <div className="absolute inset-0 pointer-events-none opacity-20 group-hover:opacity-40 transition-opacity">
+                    <div className="w-full h-[200%] bg-[linear-gradient(to_bottom,transparent_0,rgba(217,70,239,0.2)_50%,transparent_100%)] animate-scanline-fast" />
                 </div>
-            </div>
-        </div>
+              </div>
+              
+              {/* Corner Accents */}
+            </Link>
+          </div>
 
-        {/* Dashboard Content Scrollable */}
-        <div className="p-8 h-[calc(100vh-104px)] overflow-y-auto custom-scrollbar pb-20">
-          <Outlet context={{ user, profile, setProfile, dashboardCache, setDashboardCache }} />
+          <div className="flex items-center gap-4">
+            <button className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl hover:border-yellow-500/50 transition-all group active:scale-95">
+              <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 group-hover:bg-yellow-500 transition-all">
+                <Coins size={16} className="text-yellow-500 group-hover:text-black transition-colors" />
+              </div>
+              <span className="font-black text-xs text-white tabular-nums">0</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Dynamic Route Content */}
+        <div className="flex-1 p-8">
+          <Outlet context={{ user, profile, dashboardCache, setDashboardCache }} />
         </div>
       </main>
     </div>
   );
 };
 
-// --- Sub Components ---
-
-const NavItem = ({ icon: Icon, label, active, to }: { icon: React.ElementType, label: string, active: boolean, to: string }) => (
+const NavItem = ({
+  icon: Icon,
+  label,
+  to,
+}: {
+  icon: ElementType;
+  label: string;
+  to: string;
+}) => (
   <NavLink
     to={to}
-    end={to === "/dashboard"}
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 group ${
-      active
-        ? "bg-fuchsia-600/10 text-fuchsia-400"
-        : "text-gray-400 hover:bg-white/5 hover:text-white"
-    }`}
+    className={({ isActive }) =>
+      `flex items-center gap-3 px-4 py-3 transition-all group relative overflow-hidden ${
+        isActive
+          ? "text-white"
+          : "text-gray-400 hover:text-white"
+      }`
+    }
+    style={({ isActive }) => ({
+      clipPath: isActive ? 'polygon(0 0, 100% 0, 95% 100%, 0% 100%)' : 'none'
+    })}
   >
-    <Icon
-      size={20}
-      className={`${
-        active ? "text-fuchsia-400" : "text-gray-500 group-hover:text-white"
-      } transition-colors`}
-    />
-    {label}
-    {active && (
-      <div className="ml-auto w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_10px_rgba(232,121,249,0.8)]"></div>
+    {({ isActive }) => (
+      <>
+        {/* Active/Hover Background */}
+        {isActive && (
+          <div className="absolute inset-0 bg-fuchsia-600/20 border-l-2 border-fuchsia-500 z-0">
+            {/* Cyber Scanline Loop */}
+            <div className="absolute inset-0 pointer-events-none opacity-20">
+                <div className="w-full h-[200%] bg-[linear-gradient(to_bottom,transparent_0,rgba(217,70,239,0.3)_50%,transparent_100%)] animate-scanline-fast" />
+            </div>
+            {/* Glow */}
+            <div className="absolute inset-0 shadow-[0_0_20px_rgba(192,38,211,0.2)]" />
+          </div>
+        )}
+        
+        {/* Hidden Hover State (Simple tint) */}
+        {!isActive && (
+          <div className="absolute inset-0 bg-white/0 group-hover:bg-white/5 transition-colors z-0" />
+        )}
+
+        <Icon size={20} className={`relative z-10 transition-all ${isActive ? "text-fuchsia-400 drop-shadow-[0_0_8px_rgba(217,70,239,0.5)]" : "group-hover:text-white"}`} />
+        <span className="hidden md:block font-black text-[11px] uppercase tracking-widest relative z-10">
+          {label}
+        </span>
+
+        {/* HUD Decoration for Active */}
+        {isActive && (
+          <div className="absolute top-0 right-0 p-1 opacity-50">
+            <div className="w-1.5 h-1.5 border-t border-r border-fuchsia-400" />
+          </div>
+        )}
+      </>
     )}
   </NavLink>
 );
-
-const UserProfileDropup = ({
-  user,
-  profile,
-  onLogout,
-  onSettings,
-  onProfile,
-}: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const displayName =
-    profile?.display_name ||
-    profile?.full_name ||
-    user?.user_metadata?.full_name ||
-    "User";
-
-  // Chỉ hiển thị khi đã có profile để tránh flash hiển thị "User" -> username -> display name
-  if (!profile) {
-    return (
-      <div className="flex items-center gap-3 p-2 -m-2 rounded-xl">
-        <div className="w-10 h-10 rounded-full bg-neutral-800 animate-pulse"></div>
-        <div className="flex-1 overflow-hidden space-y-2">
-          <div className="h-4 bg-neutral-800 rounded animate-pulse w-24"></div>
-          <div className="h-3 bg-neutral-800 rounded animate-pulse w-16"></div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative">
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          ></div>
-          <div className="absolute bottom-full left-0 w-full mb-2 bg-neutral-900 border border-white/10 rounded-xl shadow-xl overflow-hidden z-20 animate-fade-in-up">
-            <button
-              onClick={() => {
-                onProfile();
-                setIsOpen(false);
-              }}
-              className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2 transition-colors border-b border-white/5"
-            >
-              <Users size={16} /> Hồ sơ
-            </button>
-            <button
-              onClick={() => {
-                onSettings();
-                setIsOpen(false);
-              }}
-              className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-white/5 hover:text-white flex items-center gap-2 transition-colors border-b border-white/5"
-            >
-              <Settings size={16} /> Cài đặt
-            </button>
-            <button
-              onClick={() => {
-                onLogout();
-                setIsOpen(false);
-              }}
-              className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-white/5 hover:text-red-300 flex items-center gap-2 transition-colors"
-            >
-              <LogOut size={16} /> Đăng xuất
-            </button>
-          </div>
-        </>
-      )}
-
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-3 p-2 -m-2 rounded-xl cursor-pointer transition-colors ${
-          isOpen ? "bg-white/10" : "hover:bg-white/5"
-        }`}
-      >
-        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-fuchsia-500 to-purple-600 p-[2px]">
-          <img
-            src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"}
-            alt="User"
-            className="w-full h-full rounded-full object-cover border-2 border-black"
-          />
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <h4 className="text-sm font-bold truncate">{displayName}</h4>
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-medium" style={{ color: getRankFromMMR(profile?.mmr ?? null).color }}>
-              Hạng: {getRankFromMMR(profile?.mmr ?? null).tier} {getRankFromMMR(profile?.mmr ?? null).division}
-            </p>
-            <div className="w-1 h-1 rounded-full bg-white/10" />
-          </div>
-        </div>
-        <div className="text-gray-500">
-          <ChevronRight
-            size={16}
-            className={`transition-transform duration-300 ${
-              isOpen ? "-rotate-90" : ""
-            }`}
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default DashboardPage;

@@ -42,6 +42,88 @@ input, textarea, [contenteditable="true"] {
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #a21caf; /* fuchsia-700 */
   }
+
+  /* Tech Utilities */
+  .glass-panel {
+    @apply bg-neutral-900/60 backdrop-blur-xl border border-white/5;
+  }
+
+  .glass-panel-heavy {
+    @apply bg-black/80 backdrop-blur-2xl border border-white/10;
+  }
+
+  .tech-grid {
+    background-image: 
+      linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .tech-border {
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .tech-border::before,
+  .tech-border::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-color: rgba(255, 255, 255, 0.2);
+    border-style: solid;
+  }
+
+  .tech-border::before {
+    top: -1px;
+    left: -1px;
+    border-width: 1px 0 0 1px;
+  }
+
+  .tech-border::after {
+    bottom: -1px;
+    right: -1px;
+    border-width: 0 1px 1px 0;
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .glow-blue { box-shadow: 0 0 15px rgba(59, 130, 246, 0.3); }
+  .glow-fuchsia { box-shadow: 0 0 15px rgba(192, 38, 211, 0.3); }
+  .glow-yellow { box-shadow: 0 0 15px rgba(234, 179, 8, 0.3); }
+
+  .animate-scanline-fast {
+    animation: scanline 2s linear infinite;
+  }
+
+  .tech-card {
+    @apply bg-neutral-900/50 backdrop-blur-md border border-white/5 relative overflow-hidden;
+  }
+
+  .tech-card-active {
+    @apply border-fuchsia-500/30 bg-fuchsia-500/5 shadow-[0_0_20px_rgba(192,38,211,0.1)];
+  }
+
+  .tech-corner-accent {
+    @apply absolute w-2 h-2 border-fuchsia-500 opacity-50;
+  }
+
+  .tech-label {
+    @apply text-[10px] font-black uppercase tracking-[0.2em] text-gray-500;
+  }
+
+  .tech-value {
+    @apply font-black tracking-tight text-white;
+  }
 }
 
 /* Global Scrollbar (Optional but recommended for consistency) */
@@ -69,4 +151,30 @@ input, textarea {
 
 input:focus, textarea:focus {
   outline: none;
+}
+
+.bg-dot-pattern {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+.bg-grid-pattern {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.scanline::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.02) 50%, transparent);
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
 }
