@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Bookmark,
   Plus,
+  Shield,
 } from "lucide-react";
 
 const DashboardPage = () => {
@@ -56,8 +57,14 @@ const DashboardPage = () => {
     return false;
   };
 
+  const getPageInfo = () => {
+      return { title: 'SẢNH ĐẤU', bg: 'bg-neutral-800' };
+  };
+
+  const pageInfo = getPageInfo();
+
   return (
-    <div className="min-h-screen bg-black text-white font-sans flex selection:bg-fuchsia-500 selection:text-white overflow-hidden">
+    <div className="h-screen bg-black text-white font-sans flex selection:bg-fuchsia-500 selection:text-white overflow-hidden">
       {/* --- SIDEBAR --- */}
       <aside className="w-64 hidden lg:flex flex-col border-r border-white/10 bg-neutral-950/50 backdrop-blur-xl h-screen fixed top-0 left-0 z-50">
         {/* Logo */}
@@ -98,7 +105,7 @@ const DashboardPage = () => {
             />
            
             <NavItem
-              icon={Users}
+              icon={Shield}
               label="Clan / Đội"
               to="/dashboard/clan"
               active={isLinkActive("/dashboard/clan")}
@@ -122,47 +129,75 @@ const DashboardPage = () => {
       </aside>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 lg:ml-64 relative">
+      <main className="flex-1 lg:ml-64 relative flex flex-col h-full">
         {/* Background Glow Effect */}
         <div className="absolute top-0 left-0 w-full h-[500px] bg-fuchsia-900/10 blur-[120px] pointer-events-none"></div>
 
-        {/* Header */}
-        <header className="h-20 flex items-center justify-between px-8 border-b border-white/10 sticky top-0 bg-black/80 backdrop-blur-md z-40">
-          <div className="flex items-center gap-4 text-gray-400">
-            <Swords className="w-8 h-8 text-fuchsia-500 group-hover:rotate-12 transition-transform duration-300" />
-          </div>
-          <div className="flex items-center gap-6">
-            {/* Search Bar */}
-            <div className="hidden md:flex items-center bg-neutral-900 border border-white/10 rounded-full px-4 py-2 w-64 focus-within:border-fuchsia-500/50 transition-colors">
-              <Search size={18} className="text-gray-500" />
-              <input
-                type="text"
-                placeholder="Tìm giải đấu, người chơi..."
-                className="bg-transparent border-none outline-none text-sm ml-2 w-full text-white placeholder-gray-600"
-              />
+        {/* Header - TRAPEZOID STYLE - REFINED */}
+        <div className="relative h-16 shrink-0 mb-2 flex items-center justify-between px-6 z-50 bg-gradient-to-b from-neutral-900/80 to-transparent">
+            {/* Background Line (Top Border) */}
+            <div className="absolute top-0 left-0 right-0 h-[1px] bg-white/5"></div>
+
+            {/* LEAVE LEFT EMPTY FOR NOW (Sidebar handles Nav) */}
+            <div className="flex items-center gap-6 h-full z-10 w-1/3">
+                 {/* Optional: Add Breadcrumbs here later */}
             </div>
 
-            {/* Gold Balance & Add button */}
-            <div className="flex items-center gap-3 bg-neutral-900/50 border border-white/5 rounded-full px-4 py-1.5 hover:border-white/10 transition-all select-none">
-              <div className="flex items-center gap-2">
-                <span className="text-lg leading-none">🪙</span>
-                <span className="text-sm font-black text-yellow-500">
-                  {profile?.gold?.toLocaleString() || 0}
-                </span>
-              </div>
-              <button 
-                onClick={() => navigate("/dashboard/payment")}
-                className="w-6 h-6 flex items-center justify-center rounded-full bg-fuchsia-600/20 hover:bg-fuchsia-600 text-fuchsia-400 hover:text-white transition-all border border-fuchsia-500/30"
-                title="Nạp vàng"
-              >
-                <Plus size={14} strokeWidth={3} />
-              </button>
+            {/* Center: TRAPEZOID DYNAMIC TITLE */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-full">
+                   <Link to={"/dashboard/arena"}>
+                <div className={`relative w-[320px] h-full cursor-pointer ${pageInfo.bg} flex items-center justify-center shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)] transition-all duration-500 group`}
+                style={{ clipPath: 'polygon(0 0, 100% 0, 85% 100%, 15% 100%)' }}>
+                    {/* Inner Gradient/Shine */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none"></div>
+                    
+                    {/* Text */}
+                    <div className="relative z-10 flex flex-col items-center -mt-1 ">
+                        <div className="flex items-center gap-4 text-sm font-black text-white/20 hover:text-white uppercase tracking-[0.25em] drop-shadow-md group-hover:text-fuchsia-100 transition-colors">
+                            <Swords size={16} className="mr-2" />
+                            {pageInfo.title}
+                        </div>
+                    </div>
+                    
+                    {/* Bottom active line */}
+                    <div className="absolute bottom-0 w-1/2 h-[2px] bg-white/20 group-hover:bg-white/50 transition-colors"></div>
+                </div>
+                </Link>
             </div>
-          </div>
-        </header>
+
+            {/* Right: Search & Coins */}
+            <div className="flex items-center justify-end gap-4 h-full z-10 w-1/3">
+                {/* Search Bar */}
+                <div className="hidden md:flex items-center bg-neutral-900 border border-white/10 rounded-full px-4 py-2 w-64 focus-within:border-fuchsia-500/50 transition-colors">
+                  <Search size={18} className="text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Tìm kiếm người chơi..."
+                    className="bg-transparent border-none outline-none text-sm ml-2 w-full text-white placeholder-gray-600"
+                  />
+                </div>
+
+                {/* Gold Balance & Add button */}
+                <div className="flex items-center gap-3 bg-neutral-900/50 border border-white/5 rounded-full px-4 py-1.5 hover:border-white/10 transition-all select-none">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg leading-none">🪙</span>
+                    <span className="text-sm font-black text-yellow-500">
+                      {profile?.gold?.toLocaleString() || 0}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => navigate("/dashboard/payment")}
+                    className="w-6 h-6 flex items-center justify-center rounded-full bg-fuchsia-600/20 hover:bg-fuchsia-600 text-fuchsia-400 hover:text-white transition-all border border-fuchsia-500/30"
+                    title="Nạp vàng"
+                  >
+                    <Plus size={14} strokeWidth={3} />
+                  </button>
+                </div>
+            </div>
+        </div>
 
         {/* Dashboard Content Scrollable */}
-        <div className="p-8 h-[calc(100vh-80px)] overflow-y-auto custom-scrollbar pb-20">
+        <div className="p-8 h-[calc(100vh-104px)] overflow-y-auto custom-scrollbar pb-20">
           <Outlet context={{ user, profile, setProfile, dashboardCache, setDashboardCache }} />
         </div>
       </main>

@@ -6,7 +6,6 @@ export interface Participant {
     avatar_url: string;
     is_ready: boolean;
     is_host: boolean;
-    level?: number;
     rank?: string;
 }
 

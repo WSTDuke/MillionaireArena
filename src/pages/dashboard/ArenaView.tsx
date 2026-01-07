@@ -180,7 +180,6 @@ const ArenaView = () => {
                         avatar_url: hostAvatar,
                         is_ready: true,
                         is_host: true,
-                        level: profileData?.level || 1,
                         rank: profileData?.rank_name || 'Bronze I'
                     }
                 ],
@@ -290,41 +289,44 @@ const ArenaView = () => {
                             placeholder="Nhập tên phòng..."
                         />
                     </div>
-
-                    {/* Input Group: Rounds */}
+                    
+                    {/* Input Group: Rounds Selection */}
                     <div className="space-y-3">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Số Round đấu (Tối đa)</label>
-                        <div className="flex items-center gap-4">
-                            <input 
-                                type="number" 
-                                min={1}
-                                max={9}
-                                step={2}
-                                className="w-24 bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-fuchsia-500 outline-none font-bold text-center"
-                                value={roomSettings.max_rounds}
-                                onChange={(e) => setRoomSettings({...roomSettings, max_rounds: parseInt(e.target.value) || 1})}
-                            />
-                            <div className="text-gray-500 text-xs italic">
-                                * Gợi ý: 1 (Bo1), 3 (Bo3), 5 (Bo5)
-                            </div>
+                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Thể thức thi đấu</label>
+                        <div className="grid grid-cols-3 gap-3">
+                            {[3, 5, 7].map((num) => (
+                                <button
+                                    key={num}
+                                    onClick={() => setRoomSettings({...roomSettings, max_rounds: num})}
+                                    className={`py-3 rounded-xl font-bold transition-all border ${
+                                        roomSettings.max_rounds === num
+                                        ? 'bg-fuchsia-600/20 border-fuchsia-500 text-fuchsia-400 shadow-[0_0_15px_rgba(192,38,211,0.2)]'
+                                        : 'bg-neutral-900 border-white/10 text-gray-400 hover:border-white/20'
+                                    }`}
+                                >
+                                    Bo{num}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
-                    {/* Input Group: Questions */}
+                    {/* Input Group: Questions Selection */}
                     <div className="space-y-3">
                         <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Số câu hỏi mỗi Round</label>
-                        <div className="flex items-center gap-4">
-                            <input 
-                                type="number" 
-                                min={5}
-                                max={20}
-                                className="w-24 bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none font-bold text-center"
-                                value={roomSettings.questions}
-                                onChange={(e) => setRoomSettings({...roomSettings, questions: parseInt(e.target.value) || 5})}
-                            />
-                            <div className="text-gray-500 text-xs italic">
-                                * Khuyên dùng: 5 - 15 câu
-                            </div>
+                        <div className="grid grid-cols-4 gap-3">
+                            {[5, 7, 10, 12].map((num) => (
+                                <button
+                                    key={num}
+                                    onClick={() => setRoomSettings({...roomSettings, questions: num})}
+                                    className={`py-3 rounded-xl font-bold transition-all border ${
+                                        roomSettings.questions === num
+                                        ? 'bg-blue-600/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)]'
+                                        : 'bg-neutral-900 border-white/10 text-gray-400 hover:border-white/20'
+                                    }`}
+                                >
+                                    {num}
+                                </button>
+                            ))}
                         </div>
                     </div>
 
@@ -387,7 +389,6 @@ const ArenaView = () => {
       <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-             <Swords className="text-fuchsia-500" size={32} />
              Đấu Trường (Arena)
            </h1>
            <p className="text-gray-400 mt-2">
@@ -448,7 +449,7 @@ const ArenaView = () => {
       </div>
 
       {/* Active Lobbies / Live Matches */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mt-8">
         
         {/* Quick Join / Lobbies */}
         <div className="xl:col-span-2 space-y-6 mt-8">
@@ -478,7 +479,7 @@ const ArenaView = () => {
 
                    <button 
                       onClick={handleOpenCreateModal}
-                      className="px-4 h-10 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-fuchsia-900/20 flex items-center gap-2 transition-all active:scale-95 border border-fuchsia-400/20"
+                      className="px-4 h-10 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-bold  shadow-lg shadow-fuchsia-900/20 flex items-center gap-2 transition-all active:scale-95 border border-fuchsia-400/20"
                    >
                        Tạo phòng
                    </button>
@@ -524,7 +525,7 @@ const ArenaView = () => {
 
         {/* Sidebar: Ranking / History */}
         <div className="space-y-6">
-          <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-2xl p-6 relative overflow-hidden">
+          <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-b-4xl p-6 relative overflow-hidden">
              <div className="absolute top-0 right-0 p-4 opacity-10">
                <Bookmark size={100} />
              </div>
@@ -544,7 +545,7 @@ const ArenaView = () => {
                </div>
                <div>
                   <div className="text-2xl font-bold text-white uppercase tracking-tight" style={{ color: rankInfo.color }}>
-                    {rankInfo.tier === 'Unranked' ? 'Chưa hạng' : `${rankInfo.tier} ${rankInfo.division}`}
+                    {rankInfo.tier === 'Unranked' ? 'Chưa có hạng' : `${rankInfo.tier} ${rankInfo.division}`}
                   </div>
                   <div className="text-sm text-gray-400 font-bold">{profile?.mmr ?? 0} MMR</div>
                </div>
@@ -640,7 +641,7 @@ const ModeCard = ({ title, description, image, icon: Icon, color, features, isNe
             e.stopPropagation();
             onClick();
           }}
-          className={`w-full py-3 rounded-xl font-bold text-white bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 transition-colors flex items-center justify-center gap-2 group-hover:bg-gradient-to-r ${color === 'fuchsia' ? 'from-fuchsia-600 to-purple-600' : color === 'red' ? 'from-red-600 to-orange-600' : 'from-blue-600 to-cyan-600'}`}
+          className={`w-full py-3  font-bold text-white bg-white/10 hover:bg-white/20 backdrop-blur border border-white/10 transition-colors flex items-center justify-center gap-2 group-hover:bg-gradient-to-r ${color === 'fuchsia' ? 'from-fuchsia-600 to-purple-600' : color === 'red' ? 'from-red-600 to-orange-600' : 'from-blue-600 to-cyan-600'}`}
         >
           <Play size={16} fill="currentColor" /> Chơi ngay
         </button>

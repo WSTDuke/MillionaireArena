@@ -72,7 +72,6 @@ const RankingView = () => {
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Bookmark className="text-fuchsia-500" size={32} />
             Bảng Xếp Hạng
           </h1>
           <p className="text-gray-400 mt-2">

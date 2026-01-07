@@ -106,7 +106,7 @@ async function translateBatchWithGemini(texts: string[]): Promise<string[]> {
     try {
         const model = genAI.getGenerativeModel({ 
             model: "gemini-1.5-flash",
-        }, { apiVersion: "v1beta" });
+        }, { apiVersion: "v1" });
 
         // Cập nhật cách truyền prompt để đảm bảo Gemini hiểu rõ ngữ cảnh mảng
         const prompt = `${SYSTEM_PROMPT}\n\nINPUT DATA TO TRANSLATE:\n${JSON.stringify(texts)}`;
@@ -132,7 +132,7 @@ async function translateBatchWithGemini(texts: string[]): Promise<string[]> {
         if (msg.includes("404") || msg.includes("not found")) {
             geminiBroken = true;
             localStorage.setItem('gemini_broken', 'true');
-            console.warn("Gemini (v1) not available. Switching to Google Translate.");
+            console.warn("Gemini resource not found (likely API/Endpoint mismatch). Switching to Google Translate.");
         } else {
             console.error("Gemini Error, falling back to Google:", msg);
         }

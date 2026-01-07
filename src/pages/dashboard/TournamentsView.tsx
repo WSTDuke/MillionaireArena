@@ -39,7 +39,7 @@ const TournamentsView = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent mb-1">
+          <h1 className="text-3xl font-bold text-white mb-1">
             Giải đấu
           </h1>
           <p className="text-gray-400">Tham gia tranh tài, giành giải thưởng lớn.</p>

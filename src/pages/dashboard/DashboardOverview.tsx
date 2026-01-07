@@ -85,12 +85,6 @@ const DashboardOverview = () => {
           <h1 className="text-3xl font-bold mb-1">Bắt đầu hành trình của bạn!</h1>
           <p className="text-gray-400">Hôm nay là một ngày tuyệt vời để leo hạng.</p>
         </div>
-       <Link to="/dashboard/arena">
-        <button className="px-6 py-3 rounded-lg bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-bold shadow-[0_0_20px_rgba(192,38,211,0.3)] hover:shadow-[0_0_30px_rgba(192,38,211,0.5)] transition-all flex items-center gap-2">
-          <Swords size={20} />
-          Tìm trận ngay
-        </button>
-       </Link>
       </div>
 
       {/* Stats Grid */}

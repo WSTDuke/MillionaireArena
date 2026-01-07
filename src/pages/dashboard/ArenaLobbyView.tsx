@@ -1,10 +1,10 @@
 import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
-import { Zap, Swords, X, Loader2, Bookmark, Copy, Check, Play, Plus, RefreshCcw } from 'lucide-react';
+import { Zap, Swords, X, Loader2, Bookmark, Check, Play, Plus } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 
 import { leaveRoom as leaveRoomUtil } from '../../lib/roomManager';
-import { fetchQuestions } from '../../lib/trivia';
+import { fetchQuestions, type ProcessedQuestion } from '../../lib/trivia';
 
 interface Participant {
     id: string;
@@ -12,7 +12,6 @@ interface Participant {
     avatar_url: string;
     is_ready: boolean;
     is_host: boolean;
-    level?: number;
     rank?: string;
 }
 
@@ -34,7 +33,7 @@ const ArenaLobbyView = () => {
     const [searchParams] = useSearchParams();
     const { user, profile } = useOutletContext<{ 
         user: { id: string; user_metadata: { full_name?: string; avatar_url?: string } }; 
-        profile: { display_name?: string; full_name?: string; avatar_url?: string; level?: number; rank_name?: string } 
+        profile: { display_name?: string; full_name?: string; avatar_url?: string; rank_name?: string; mmr?: number } 
     }>();
     const mode = searchParams.get('mode') || 'Normal';
     const roomId = searchParams.get('roomId');
@@ -58,8 +57,61 @@ const ArenaLobbyView = () => {
     const hasJoined = useRef(false);
     const leaveRoomRef = useRef<(() => Promise<void>) | null>(null);
 
+    const getModeDetails = () => {
+        switch (mode.toLowerCase()) {
+            case 'ranked':
+                return {
+                    title: 'Đấu hạng (Ranked)',
+                    icon: Bookmark,
+                    color: 'text-fuchsia-400',
+                    bg: 'from-fuchsia-600/20 to-purple-600/20',
+                    border: 'border-fuchsia-500/30',
+                    format: 'Bo5',
+                    questions: '10 câu/Round'
+                };
+            case 'blitzmatch':
+                return {
+                    title: 'Chớp nhoáng (Blitzmatch)',
+                    icon: Zap,
+                    color: 'text-red-400',
+                    bg: 'from-red-600/20 to-orange-600/20',
+                    border: 'border-red-500/30',
+                    format: 'Bo3',
+                    questions: '5 câu/Round'
+                };
+            default:
+                return {
+                    title: 'Đấu thường (Normal)',
+                    icon: Swords,
+                    color: 'text-blue-400',
+                    bg: 'from-blue-600/20 to-cyan-600/20',
+                    border: 'border-blue-500/30',
+                    format: 'Bo3',
+                    questions: '10 câu/Round'
+                };
+        }
+    };
+
+    const details = getModeDetails();
     const displayName = profile?.display_name || profile?.full_name || user?.user_metadata?.full_name || "User";
     const avatarUrl = profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + (user?.id || 'default');
+
+    // --- INTERNAL INITIALIZATION SAFEGUARD ---
+    const [isInternalInit, setIsInternalInit] = useState(true);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setIsInternalInit(false), 800);
+        return () => clearTimeout(timer);
+    }, []);
+
+    // --- LOADING STATE ---
+    // Wait for the profile and internal init to load to avoid sequential flickering
+    const isProfileLoading = !profile || isInternalInit;
+
+    // --- SKELETON COMPONENTS ---
+    const SkeletonItem = ({ className = "" }: { className?: string }) => (
+        <div className={`animate-pulse rounded ${details.color.replace('text-', 'bg-').replace('-400', '-500/10')} ${className}`} />
+    );
 
     const leaveRoom = useCallback(async () => {
         if (!roomId || !user?.id) return;
@@ -128,7 +180,7 @@ const ArenaLobbyView = () => {
             setIsHost(data.host_id === user.id);
             setParticipants(data.participants || []);
             
-            if (isInitial && !hasJoined.current) {
+            if (isInitial && !hasJoined.current && profile) {
                 hasJoined.current = true;
                 setSearching(true); // "Waiting" state
                 
@@ -138,7 +190,6 @@ const ArenaLobbyView = () => {
                     avatar_url: avatarUrl,
                     is_ready: false,
                     is_host: (data.host_id === user.id),
-                    level: profile?.level || 1,
                     rank: profile?.rank_name || 'Bronze I'
                 };
 
@@ -187,12 +238,17 @@ const ArenaLobbyView = () => {
             console.error("Room not found", error);
             if (isInitial) navigate('/dashboard/arena');
         }
-    }, [roomId, user, displayName, avatarUrl, profile?.level, profile?.rank_name, navigate]);
+    }, [roomId, user, profile, displayName, avatarUrl, navigate]);
 
     // --- INITIAL FETCH ---
     useEffect(() => {
-        fetchRoomData(true);
-    }, [fetchRoomData]);
+        if (user && profile) {
+            fetchRoomData(true);
+        } else if (user) {
+            // Fetch initial room data but don't join yet until profile is ready
+            fetchRoomData(false);
+        }
+    }, [fetchRoomData, user, profile]);
 
     // --- STABLE SUBSCRIPTION ---
     useEffect(() => {
@@ -331,30 +387,30 @@ const ArenaLobbyView = () => {
 
             console.log(`Host initializing ${format} match (${gameMaxRounds} rounds, ${qCount} q/round)...`);
             
-            const allQuestions = [];
             
-            // CONSOLIDATE FETCHES BY DIFFICULTY
+            const fetchPromises = [];
+            
             // Rounds 1-2: Easy
             const easyRounds = Math.min(gameMaxRounds, 2);
-            console.log(`Step 1: Fetching ${easyRounds * qCount} Easy questions...`);
-            const rEasy = await fetchQuestions(easyRounds * qCount, 'easy', user.id);
-            allQuestions.push(...rEasy);
+            if (easyRounds > 0) {
+                fetchPromises.push(fetchQuestions(easyRounds * qCount, 'easy', user.id));
+            }
 
             // Rounds 3-4: Medium
             if (gameMaxRounds >= 3) {
                 const mediumRounds = Math.min(gameMaxRounds - 2, 2);
-                console.log(`Step 2: Fetching ${mediumRounds * qCount} Medium questions...`);
-                const rMedium = await fetchQuestions(mediumRounds * qCount, 'medium', user.id);
-                allQuestions.push(...rMedium);
+                fetchPromises.push(fetchQuestions(mediumRounds * qCount, 'medium', user.id));
             }
 
             // Rounds 5+: Hard
             if (gameMaxRounds >= 5) {
                 const hardRounds = gameMaxRounds - 4;
-                console.log(`Step 3: Fetching ${hardRounds * qCount} Hard questions...`);
-                const rHard = await fetchQuestions(hardRounds * qCount, 'hard', user.id);
-                allQuestions.push(...rHard);
+                fetchPromises.push(fetchQuestions(hardRounds * qCount, 'hard', user.id));
             }
+
+            console.log("Fetching all difficulty blocks in parallel...");
+            const results = await Promise.all(fetchPromises);
+            const allQuestions: ProcessedQuestion[] = results.flat();
 
             console.log("Saving questions and starting match...");
             await supabase
@@ -376,7 +432,7 @@ const ArenaLobbyView = () => {
     useEffect(() => {
         // Initialize countdown when match is found (and not starting yet)
         if (roomId && mode !== 'custom' && participants.length === 2 && roomData?.status === 'waiting' && matchCountdown === null && !isStarting) {
-            setMatchCountdown(5);
+            setMatchCountdown(3);
         }
 
         // Decrement countdown
@@ -444,7 +500,6 @@ const ArenaLobbyView = () => {
             avatar_url: avatarUrl,
             is_ready: true, // Auto ready for matchmaking
             is_host: false,
-            level: profile?.level || 1,
             rank: profile?.rank_name || 'Bronze I'
         };
 
@@ -494,7 +549,6 @@ const ArenaLobbyView = () => {
                 setOpponent({
                     display_name: opponentPlayer.display_name || 'Opponent',
                     avatar_url: opponentPlayer.avatar_url || '',
-                    level: opponentPlayer.level || 1,
                     rank: opponentPlayer.rank || 'Bronze I',
                     id: opponentPlayer.id,
                     is_ready: opponentPlayer.is_ready || false,
@@ -560,42 +614,10 @@ const ArenaLobbyView = () => {
         return () => clearInterval(interval);
     }, [roomId, searching, user?.id, mode, navigate, cancelMatchmaking]);
 
-    const getModeDetails = () => {
-        switch (mode.toLowerCase()) {
-            case 'ranked':
-                return {
-                    title: 'Đấu hạng (Ranked)',
-                    icon: Bookmark,
-                    color: 'text-fuchsia-400',
-                    bg: 'from-fuchsia-600/20 to-purple-600/20',
-                    border: 'border-fuchsia-500/30',
-                    format: 'Bo5',
-                    questions: '10 câu/Round'
-                };
-            case 'blitzmatch':
-                return {
-                    title: 'Chớp nhoáng (Blitzmatch)',
-                    icon: Zap,
-                    color: 'text-red-400',
-                    bg: 'from-red-600/20 to-orange-600/20',
-                    border: 'border-red-500/30',
-                    format: 'Bo3',
-                    questions: '5 câu/Round'
-                };
-            default:
-                return {
-                    title: 'Đấu thường (Normal)',
-                    icon: Swords,
-                    color: 'text-blue-400',
-                    bg: 'from-blue-600/20 to-cyan-600/20',
-                    border: 'border-blue-500/30',
-                    format: 'Bo3',
-                    questions: '10 câu/Round'
-                };
-        }
-    };
+    const isInitialLoading = !roomData && !!roomId;
+    
 
-    const details = getModeDetails();
+    // Starting Overlay (Shared)
     const isSharedPreparing = roomData?.status === 'preparing' || isStarting;
 
     return (
@@ -635,140 +657,277 @@ const ArenaLobbyView = () => {
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="flex-1 max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-8 items-center content-center min-h-0 overflow-hidden pb-6">
+            {/* Main Content - SYMMETRICAL LAYOUT */}
+            <div className="flex-1 w-full max-w-7xl mx-auto flex flex-col items-center justify-center min-h-0 relative z-10">
                 
-                {/* Left Column: Mode Info */}
-                <div className="space-y-6">
-                    <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r ${details.bg} border ${details.border}`}>
-                        <details.icon size={16} className={details.color} />
-                        <span className={`text-xs font-bold uppercase tracking-widest ${details.color}`}>
-                            {mode} MODE
-                        </span>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <h1 className="text-4xl lg:text-5xl font-extrabold tracking-tight">
-                            {mode === 'custom' && roomData ? roomData.name : details.title}
-                        </h1>
-                        {roomId && (
-                            <button 
-                                onClick={() => fetchRoomData(false)}
-                                className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-all active:rotate-180 duration-500"
-                                title="Làm mới dữ liệu"
-                            >
-                                <RefreshCcw size={20} className="text-gray-400" />
-                            </button>
-                        )}
-                    </div>
-                    
-                    {roomId && roomData && mode === 'custom' ? (
-                        <div className="bg-neutral-900 border border-white/10 rounded-xl p-4 mt-4 relative overflow-hidden">
-                             <div className="absolute top-0 right-0 p-2 opacity-20"><Bookmark size={40} /></div>
-                             <div className="text-xs text-gray-500 uppercase font-bold mb-1">Mã phòng (Room Code)</div>
-                             <div className="flex items-center gap-4">
-                                 <span className="text-3xl font-mono font-bold text-fuchsia-400 tracking-widest">{roomData.code}</span>
-                                 <button onClick={handleCopyCode} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                                     {copied ? <Check className="text-green-500" size={20} /> : <Copy className="text-gray-400" size={20} />}
-                                 </button>
-                             </div>
-                             <p className="text-xs text-gray-500 mt-2">Chia sẻ mã này cho bạn bè để mời họ vào phòng.</p>
-                        </div>
-                    ) : (
-                        <p className="text-gray-400 text-lg leading-relaxed">
-                            {matchFound ? "Đã tìm thấy đối thủ xứng tầm! Chuẩn bị tham chiến..." : 
-                             (searching || (roomId && mode !== 'custom')) ? "Đang tìm kiếm đối thủ xứng tầm..." : "Sẵn sàng tham chiến? Hãy bấm nút tìm trận để bắt đầu hành trình của bạn."}
-                        </p>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-4 pt-4">
-                        <div className="bg-white/5 border border-white/5 p-4 rounded-2xl">
-                             <div className="text-xs text-gray-500 uppercase font-bold mb-1">Thể thức</div>
-                             <div className="text-white font-bold">{roomData?.settings?.format || details.format}</div>
-                        </div>
-                        <div className="bg-white/5 border border-white/5 p-4 rounded-2xl">
-                             <div className="text-xs text-gray-500 uppercase font-bold mb-1">Câu hỏi</div>
-                             <div className="text-white font-bold">
-                                 {roomData?.settings?.questions_per_round 
-                                    ? `${roomData.settings.questions_per_round} câu/Round` 
-                                    : details.questions}
-                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Middle Column: VS Decoration */}
-                <div className="flex-1 relative flex flex-col items-center justify-center min-h-[300px]">
-                     <div className="relative opacity-20 select-none pointer-events-none">
-                          <Swords size={200} className="text-gray-700" />
+                {/* MATCH INFO HEADER (Restored - Vertical Banner Style requires this) */}
+                <div className="flex items-center gap-6 mb-12 animate-in slide-in-from-top-4 duration-500">
+                     <div className={`flex flex-col items-end`}>
+                         <div className={`text-xs font-bold uppercase tracking-widest ${details.color} mb-1 opacity-80`}>Mode</div>
+                         <div className="flex items-center gap-2">
+                             <details.icon size={20} className={details.color} />
+                             <span className="text-2xl font-black uppercase tracking-tight text-white">{mode}</span>
+                         </div>
                      </div>
-                     {(searching || matchFound) && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                             <div className="text-8xl font-black text-white/5 tracking-tighter uppercase select-none">VS</div>
-                        </div>
+                     <div className="w-px h-10 bg-white/10"></div>
+                     <div className="flex flex-col items-start">
+                         <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Details</div>
+                         <div className="flex items-center gap-3 text-sm font-bold text-gray-300">
+                             {isInitialLoading ? (
+                                <div className="flex gap-2">
+                                    <SkeletonItem className="h-7 w-16" />
+                                    <SkeletonItem className="h-7 w-24" />
+                                </div>
+                             ) : (
+                                <>
+                                    <span className="px-3 py-1 rounded bg-white/5 border border-white/10">{roomData?.settings?.format || details.format}</span>
+                                    <span className="px-3 py-1 rounded bg-white/5 border border-white/10">{roomData?.settings?.questions_per_round || 10} Câu/Round</span>
+                                </>
+                             )}
+                         </div>
+                     </div>
+                     {roomId && mode === 'custom' && (
+                         <>
+                            <div className="w-px h-10 bg-white/10"></div>
+                            <div className="flex flex-col items-start group cursor-pointer" onClick={handleCopyCode}>
+                                <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1 flex items-center gap-1">
+                                    Room Code {copied && <Check size={12} className="text-green-500" />}
+                                </div>
+                                <div className="text-2xl font-mono font-black text-fuchsia-400 tracking-widest group-hover:text-fuchsia-300 transition-colors">
+                                    {isInitialLoading ? <SkeletonItem className="h-8 w-24 mt-1" /> : roomData?.code}
+                                </div>
+                            </div>
+                         </>
                      )}
                 </div>
 
-                {/* Right Column: Searching Visuals or Opponent Display */}
-                <div className="flex-1 relative flex flex-col items-center justify-center min-h-[300px]">
-                     
-                     {/* --- SEARCHING STATE --- */}
-                     {((searching || (roomId && mode !== 'custom')) && !matchFound) ? (
-                         <div className="absolute inset-0 flex flex-col items-center justify-center z-10 animate-in fade-in duration-500">
-                             <div className="relative group">
-                                 {/* Vòng răng cưa ngoài (Gear Ring) */}
-                                 <div className="absolute inset-[-45px] opacity-40">
-                                     <svg viewBox="0 0 100 100" className="w-full h-full animate-[spin_12s_linear_infinite]">
-                                         <defs>
-                                             {/* Răng cưa nhỏ hơn (Smaller teeth) */}
-                                             <path id="gear-tooth" d="M49.2 0 L50.8 0 L51.5 4 L48.5 4 Z" />
-                                         </defs>
-                                         <g fill="currentColor" className={`${details.color} opacity-40`}>
-                                             {/* Tăng mật độ răng cưa lên 60 (Denser teeth: 60) */}
-                                             {Array.from({ length: 60 }).map((_, i) => (
-                                                 <use key={i} href="#gear-tooth" transform={`rotate(${i * 6} 50 50)`} />
-                                             ))}
-                                         </g>
-                                         <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1 4" className="opacity-20" />
-                                     </svg>
-                                 </div>
+                {/* MAIN STAGE: YOU - VS - OPPONENT */}
+                <div className="flex items-center justify-center w-full gap-4 lg:gap-12 px-4 h-full max-h-[600px]">
+                    
+                    {/* LEFT: YOU (BANNER STYLE) */}
+                    <div className="relative group w-64 h-[28rem] shrink-0 transition-transform duration-500 hover:scale-[1.02]">
+                        {/* Frame/Border Tech */}
+                        <div className={`absolute inset-0 border-y-[6px] ${details.border.replace('/30', '')} bg-neutral-900/50 backdrop-blur-sm overflow-hidden flex flex-col`}>
+                            {/* Inner Accent Lines */}
+                            <div className="absolute top-2 left-2 right-2 h-[1px] bg-white/20 z-20"></div>
+                            <div className="absolute bottom-2 left-2 right-2 h-[1px] bg-white/20 z-20"></div>
 
-                                 <div className={`w-56 h-56 rounded-full border-2 ${details.border} animate-[spin_3s_linear_infinite]`}></div>
-                                 <div className={`absolute inset-0 w-56 h-56 rounded-full border-t-2 ${details.color.replace('text-', 'border-')} animate-[spin_2s_linear_infinite_reverse]`}></div>
-                                 <div className="absolute inset-0 flex items-center justify-center">
-                                     <Loader2 size={40} className={`${details.color} animate-spin`} />
-                                 </div>
-                             </div>
-                         </div>
-                     ) : matchFound && opponent ? (
-                        <div className="flex flex-col items-center justify-center animate-in zoom-in-95 duration-300">
-                             <div className="relative">
-                                 <div className="w-44 h-44 rounded-full bg-neutral-800 overflow-hidden border-4 border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.4)] relative z-10">
-                                     <img src={opponent.avatar_url} className="w-full h-full object-cover" alt={opponent.display_name} />
-                                 </div>
-                                 <div className="absolute inset-[-10px] rounded-full border border-green-500/20 animate-pulse"></div>
-                             </div>
-                             <div className="mt-8 text-center space-y-2">
-                                 <h3 className="text-3xl font-black text-white uppercase tracking-tight">{opponent.display_name}</h3>
-                                 <div className="flex items-center justify-center gap-4 text-xs font-black uppercase tracking-widest">
-                                     <span className="text-gray-500">Level <span className="text-white">{opponent.level || 1}</span></span>
-                                     <span className="px-2 py-0.5 bg-fuchsia-500 text-white rounded">{opponent.rank || 'Bronze I'}</span>
-                                 </div>
-                             </div>
-                        </div>
-                     ) : null}
+                            {/* Avatar / Character Image */}
+                            <div className="absolute inset-x-0 top-0 bottom-24 bg-neutral-800 overflow-hidden">
+                                {isProfileLoading ? (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <SkeletonItem className="w-full h-full" />
+                                    </div>
+                                ) : (
+                                    <>
+                                        <img 
+                                            src={avatarUrl} 
+                                            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
+                                            alt="You"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 via-transparent to-transparent"></div>
+                                        
+                                        {/* Ready Banner */}
+                                        {participants.find(p => p.id === user?.id)?.is_ready && (
+                                            <div className="absolute top-8 -right-8 w-40 bg-green-500 text-black font-black text-xs py-1 text-center rotate-45 shadow-lg border-y-2 border-white/20 z-20">
+                                                READY
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
 
-                     {/* --- IDLE/FALLBACK STATE --- */}
-                     {!searching && !matchFound && (
-                        <div className="relative flex flex-col items-center gap-6">
-                            <div className="w-64 h-64 rounded-full border-2 border-white/5 flex items-center justify-center bg-white/5 backdrop-blur-sm overflow-hidden group shadow-inner">
-                                <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                                <span className="text-7xl font-bold text-white/5 group-hover:text-white/10 transition-all duration-500">?</span>
-                                <div className="absolute bottom-6 text-[10px] font-bold text-white/5 uppercase tracking-[0.4em]">Wait for battle</div>
+                            {/* Bottom Info Plate */}
+                            <div className="absolute bottom-0 inset-x-0 h-24 bg-neutral-900/90 flex flex-col justify-center px-4 border-t border-white/10">
+                                <div className="flex items-center justify-between mb-1">
+                                    <div className={`text-xs font-bold text-neutral-500 uppercase tracking-widest`}>Player</div>
+                                </div>
+                                {isProfileLoading ? (
+                                    <div className="space-y-2">
+                                        <SkeletonItem className="h-6 w-32" />
+                                        <SkeletonItem className="h-4 w-40" />
+                                    </div>
+                                ) : (
+                                    <>
+                                        <h2 className="text-2xl font-black text-white uppercase tracking-tight truncate mb-2">{displayName || 'You'}</h2>
+                                        
+                                        {/* Rank Banner */}
+                                        <div className={`w-full py-1 ${mode.toLowerCase() === 'ranked' ? 'bg-fuchsia-900/40 text-fuchsia-400 border-fuchsia-500/30' : mode.toLowerCase() === 'blitzmatch' ? 'bg-red-900/40 text-red-400 border-red-500/30' : 'bg-blue-900/40 text-blue-400 border-blue-500/30'} border rounded flex items-center justify-center gap-2`}>
+                                            <span className="font-bold text-xs uppercase tracking-wider">{profile?.rank_name || 'Bronze I'}</span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
-                     )}
+                        
+                        {/* Outer Glow (Dynamic) */}
+                        <div className={`absolute -inset-4 rounded-xl -z-10 opacity-0 group-hover:opacity-20 transition-opacity duration-500 ${details.bg}`}></div>
+                    </div>
+
+                    {/* CENTER: VS / STATUS */}
+                    <div className="flex flex-col items-center justify-center w-32 lg:w-48 shrink-0 relative z-50">
+                        {matchFound ? (
+                            // MATCH FOUND STATE - PREMIUM COUNTDOWN
+                            <div className="flex flex-col items-center relative scale-110 lg:scale-125">
+                                {/* Ambient Background Glow */}
+                                <div className={`absolute inset-0 -z-10 blur-[80px] rounded-full opacity-30 animate-pulse ${
+                                    mode.toLowerCase() === 'ranked' ? 'bg-fuchsia-500' : 
+                                    mode.toLowerCase() === 'blitzmatch' ? 'bg-red-500' : 'bg-blue-500'
+                                }`}></div>
+                                
+                                {/* VS LABEL */}
+                                <div className="relative mb-4">
+                                    <div className="text-7xl lg:text-8xl font-black text-white italic tracking-tighter drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                                        VS
+                                    </div>
+                                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                                        <span className={`text-[10px] font-black uppercase tracking-[0.4em] ${details.color} opacity-80`}>Match Starting</span>
+                                    </div>
+                                </div>
+
+                                {/* COUNTDOWN RING & PLATE */}
+                                <div className="relative flex items-center justify-center w-36 h-36">
+                                     {/* Tech Ring Background */}
+                                     <div className="absolute inset-0 rounded-full border border-white/5 bg-white/5 backdrop-blur-md"></div>
+                                     
+                                     {/* Progress Ring */}
+                                     <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-[0_0_8px_rgba(255,255,255,0.1)]">
+                                         <circle 
+                                            cx="72" cy="72" r="66" 
+                                            className="stroke-white/5 fill-none" 
+                                            strokeWidth="2" 
+                                        />
+                                         <circle 
+                                            cx="72" cy="72" r="66" 
+                                            className={`fill-none transition-all duration-1000 ease-linear ${
+                                                mode.toLowerCase() === 'ranked' ? 'stroke-fuchsia-500' : 
+                                                mode.toLowerCase() === 'blitzmatch' ? 'stroke-red-500' : 'stroke-blue-500'
+                                            }`} 
+                                            strokeWidth="4" 
+                                            strokeDasharray="414.69"
+                                            strokeDashoffset={414.69 - (414.69 * (matchCountdown || 0) / 3)}
+                                            strokeLinecap="round"
+                                        />
+                                     </svg>
+
+                                     {/* The Number */}
+                                     <div key={matchCountdown} className="text-6xl font-black text-white tabular-nums italic drop-shadow-[0_0_15px_rgba(255,255,255,0.5)] animate-in zoom-in-150 fade-in duration-300">
+                                        {matchCountdown !== null ? matchCountdown : '0'}
+                                    </div>
+
+                                    {/* Scanning Ornament (Slow rotate) */}
+                                    <div className={`absolute inset-[-10px] border-t-2 border-l-2 rounded-full opacity-20 animate-[spin_4s_linear_infinite] ${
+                                        mode.toLowerCase() === 'ranked' ? 'border-fuchsia-500' : 
+                                        mode.toLowerCase() === 'blitzmatch' ? 'border-red-500' : 'border-blue-500'
+                                    }`}></div>
+                                </div>
+                            </div>
+                        ) : searching || (roomId && mode !== 'custom') ? (
+                            // SEARCHING STATE - PREMIUM RADAR
+                            <div className="relative w-48 h-48 flex items-center justify-center">
+                                {/* Pulse Effect */}
+                                <div className={`absolute inset-0 border-2 ${details.border} rounded-full animate-[ping_4s_linear_infinite] opacity-20`}></div>
+                                <div className={`absolute inset-4 border ${details.border} rounded-full animate-[ping_4s_linear_infinite_1s] opacity-10`}></div>
+                                
+                                {/* Rotating Radar Line */}
+                                <div className={`absolute inset-0 rounded-full border border-white/5 bg-gradient-to-tr from-transparent via-transparent to-white/10 animate-[spin_3s_linear_infinite]`}></div>
+                                
+                                <div className="relative z-10 flex flex-col items-center gap-3">
+                                    <div className="relative">
+                                        <Loader2 size={40} className={`${details.color.replace('-400', '-500')} animate-[spin_2s_linear_infinite] opacity-80`} />
+                                        <div className={`absolute inset-0 blur-md ${details.color.replace('text-', 'bg-')} opacity-20 animate-pulse`}></div>
+                                    </div>
+                                    
+                                    <div className="flex flex-col items-center">
+                                        <div className={`px-4 py-1 bg-black/60 backdrop-blur-md border ${details.border} rounded-full text-sm font-mono ${details.color} shadow-[0_0_15px_rgba(0,0,0,0.5)]`}>
+                                            {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
+                                        </div>
+                                        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-white/40 mt-2 animate-pulse">Scanning...</span>
+                                    </div>
+                                </div>
+
+                                {/* Tech Corner Ornaments */}
+                                <div className={`absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 ${details.border} opacity-40`}></div>
+                                <div className={`absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 ${details.border} opacity-40`}></div>
+                                <div className={`absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 ${details.border} opacity-40`}></div>
+                                <div className={`absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 ${details.border} opacity-40`}></div>
+                            </div>
+                        ) : (
+                            // IDLE STATE
+                            <div className="flex flex-col items-center opacity-30 scale-75">
+                                <Swords size={64} className="text-white mb-2" />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* RIGHT: OPPONENT (BANNER STYLE) */}
+                    <div className="relative group w-64 h-[28rem] shrink-0 transition-transform duration-500 hover:scale-[1.02]">
+                         {matchFound && opponent ? (
+                            // REAL OPPONENT BANNER
+                            <div className={`absolute inset-0 border-y-[6px] ${mode.toLowerCase() === 'ranked' ? 'border-fuchsia-600' : mode.toLowerCase() === 'blitzmatch' ? 'border-red-600' : 'border-blue-600'} bg-neutral-900/50 backdrop-blur-sm overflow-hidden flex flex-col animate-in slide-in-from-right-12 duration-500`}>
+                                {/* Inner Accent Lines */}
+                                <div className="absolute top-2 left-2 right-2 h-[1px] bg-white/20 z-20"></div>
+                                <div className="absolute bottom-2 left-2 right-2 h-[1px] bg-white/20 z-20"></div>
+
+                                {/* Avatar */}
+                                <div className="absolute inset-x-0 top-0 bottom-24 bg-neutral-800 overflow-hidden">
+                                     <img 
+                                        src={opponent.avatar_url || '/default-avatar.png'} 
+                                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
+                                        alt="Opponent"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 via-transparent to-transparent"></div>
+                                    
+                                    {/* Ready Banner */}
+                                    {opponentPlayer?.is_ready && (
+                                         <div className="absolute top-8 -left-8 w-40 bg-green-500 text-black font-black text-xs py-1 text-center -rotate-45 shadow-lg border-y-2 border-white/20 z-20">
+                                             READY
+                                         </div>
+                                    )}
+                                </div>
+
+                                {/* Bottom Info Plate */}
+                                <div className="absolute bottom-0 inset-x-0 h-24 bg-neutral-900/90 flex flex-col justify-center px-4 border-t border-white/10">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className={`text-xs font-bold text-neutral-500 uppercase tracking-widest ml-auto`}>Opponent</div>
+                                    </div>
+                                    <h2 className="text-2xl font-black text-white uppercase tracking-tight truncate mb-2 text-right">{opponent?.display_name}</h2>
+                                    
+                                     {/* Rank Banner */}
+                                    <div className={`w-full py-1 ${mode.toLowerCase() === 'ranked' ? 'bg-fuchsia-900/40 text-fuchsia-400 border-fuchsia-500/30' : mode.toLowerCase() === 'blitzmatch' ? 'bg-red-900/40 text-red-400 border-red-500/30' : 'bg-blue-900/40 text-blue-400 border-blue-500/30'} border rounded flex items-center justify-center gap-2`}>
+                                         <span className="font-bold text-xs uppercase tracking-wider">{opponent?.rank || 'Bronze I'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            // PLACEHOLDER / SEARCHING BANNER
+                            <div className={`absolute inset-0 border-y-[6px] border-neutral-800 bg-neutral-900/30 backdrop-blur-sm overflow-hidden flex flex-col items-center justify-center transition-all duration-500 ${searching ? 'opacity-100' : 'opacity-40'}`}>
+                                <div className="w-full h-full flex flex-col items-center justify-center relative">
+                                    {searching && (
+                                        <div className="absolute inset-0 bg-gradient-to-t from-neutral-900 via-transparent to-transparent opacity-50 animate-pulse"></div>
+                                    )}
+                                    <div className="text-9xl font-black text-white/5 select-none">?</div>
+                                    <div className="absolute bottom-24 text-sm font-bold text-neutral-600 uppercase tracking-widest bg-neutral-900/80 px-4 py-1 rounded-full border border-white/5">
+                                        {searching ? 'SEARCHING...' : 'WAITING'}
+                                    </div>
+                                </div>
+                                
+                                {/* Custom Room Invite Button (Overlay) */}
+                                {roomId && mode === 'custom' && !opponent && (
+                                    <div className="absolute inset-0 flex items-center justify-center z-30">
+                                         <button 
+                                            onClick={() => setShowInviteModal(true)}
+                                            className="w-16 h-16 rounded-full bg-neutral-800 border-2 border-dashed border-neutral-600 flex items-center justify-center hover:border-white hover:bg-neutral-700 hover:scale-110 transition-all group"
+                                         >
+                                             <Plus size={32} className="text-gray-400 group-hover:text-white" />
+                                         </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
+
             </div>
             
             {/* --- INVITE MODAL --- */}
@@ -810,61 +969,12 @@ const ArenaLobbyView = () => {
                 </div>
             )}
 
-            {/* Bottom Bar: Player Slots & Actions */}
-            <div className="border-t border-white/5 pt-4 pb-4 mt-auto shrink-0 flex flex-col md:flex-row items-center justify-between gap-8 max-w-6xl mx-auto w-full">
-                 
-                 {/* Player Slots */}
-                 <div className="flex items-center gap-4">
-                     {/* Self */}
-                     <div className="relative group">
-                         <div className={`w-16 h-16 rounded-2xl p-0.5 relative z-10 ${participants.find(p => p.id === user?.id)?.is_ready ? 'bg-green-500 shadow-[0_0_20px_rgba(34,197,94,0.4)]' : 'bg-fuchsia-600'}`}>
-                              <img src={avatarUrl} className="w-full h-full rounded-[14px] object-cover bg-neutral-900" />
-                              <div className="absolute -bottom-2 -right-2 bg-neutral-900 text-white text-[10px] font-bold px-2 py-0.5 rounded border border-white/10">YOU</div>
-                              {participants.find(p => p.id === user?.id)?.is_ready && (
-                                  <div className="absolute -top-2 -right-2 bg-green-500 rounded-full p-1 border-2 border-neutral-900">
-                                      <Check size={12} className="text-white" strokeWidth={3} />
-                                  </div>
-                              )}
-                         </div>
-                         <div className="absolute inset-0 bg-fuchsia-600 blur-lg opacity-20 group-hover:opacity-40 transition-opacity"></div>
-                     </div>
-                     
-                     <div className="w-8 h-px bg-white/10"></div>
-                     <span className="text-xs font-bold text-white/20">VS</span>
-                     <div className="w-8 h-px bg-white/10"></div>
-
-                     {/* Opponent Slot */}
-                     <div className="relative">
-                         <div className={`w-16 h-16 rounded-2xl border-2 border-dashed ${matchFound ? 'border-green-500 bg-green-500/10' : 'border-white/10 bg-white/5'} flex items-center justify-center relative z-10 transition-colors`}>
-                             {matchFound && opponent ? (
-                                  <div className="relative w-full h-full"> 
-                                    <img src={opponent.avatar_url} className="w-full h-full rounded-[14px] object-cover p-0.5" />
-                                    {opponentPlayer?.is_ready && (
-                                        <div className="absolute -top-2 -right-2 bg-green-500 rounded-full p-1 border-2 border-neutral-900 animate-in zoom-in">
-                                            <Check size={12} className="text-white" strokeWidth={3} />
-                                        </div>
-                                    )}
-                                  </div>
-                             ) : (
-                                  roomId ? (
-                                    <button 
-                                        onClick={() => setShowInviteModal(true)}
-                                        className="w-full h-full flex items-center justify-center hover:bg-white/10 rounded-[14px] transition-colors group"
-                                    >
-                                        <Plus className="text-gray-500 group-hover:text-white transition-colors" size={24} />
-                                   </button>
-                                  ) : (
-                                    <div className="text-white/20 font-bold">?</div>
-                                  )
-                             )}
-                         </div>
-                     </div>
-                 </div>
-
-                 {/* Action Buttons */}
-                 <div className="relative z-20 flex flex-col items-center gap-4 w-full max-w-sm">
-                        {/* Status Text */}
-                         <div className="text-center">
+            {/* Bottom Bar: Action Buttons ONLY (Centered) */}
+            <div className="border-t border-white/5 pt-8 pb-8 mt-auto shrink-0 flex items-center justify-center w-full relative z-20 bg-gradient-to-t from-black/50 to-transparent">
+                 {/* Action Buttons Container - CENTERED */}
+                 <div className="relative z-20 flex flex-col items-center gap-4 w-full max-w-md">
+                        {/* Status Text - Fixed Height to prevent jump */}
+                         <div className="text-center h-12 flex flex-col justify-end">
                              {/* Only show Match Found for normal matchmaking, not custom rooms */}
                              {!roomId && matchFound && (
                                  <div className="text-sm font-black uppercase tracking-[0.2em] mb-1 text-green-500 animate-pulse">
@@ -877,118 +987,112 @@ const ArenaLobbyView = () => {
                                  </div>
                              )}
                              {!roomId && !matchFound && (
-                                 <div className="text-sm font-black uppercase tracking-[0.2em] mb-1">
-                                     {searching ? 'Searching' : 'Idle'}
+                                 <div className="text-sm font-black uppercase tracking-[0.2em] mb-1 text-gray-400">
+                                     {searching ? 'Đang tìm đối thủ...' : 'Sẵn sàng'}
                                  </div>
                              )}
-                             {searching && !matchFound && !roomId && (
-                                 <div className="flex justify-center gap-1">
-                                     <div className="w-1 h-1 bg-fuchsia-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                                     <div className="w-1 h-1 bg-fuchsia-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                                     <div className="w-1 h-1 bg-fuchsia-500 rounded-full animate-bounce"></div>
-                                 </div>
-                             )}
+                            
                          </div>
 
-                        {/* --- BUTTONS LOGIC --- */}
-                        {roomId && mode === 'custom' ? (
-                            // CUSTOM ROOM BUTTONS
-                            <div className="w-full space-y-3">
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={handleCancelSearch}
-                                        className="flex-1 py-4 rounded-xl bg-red-950/30 hover:bg-red-900/50 text-red-500 font-bold uppercase tracking-wider transition-all border border-red-500/30 hover:border-red-500 hover:shadow-[0_0_30px_rgba(239,68,68,0.2)] active:scale-95 backdrop-blur-md group text-sm"
-                                    >
-                                        <span className="group-hover:animate-pulse">Rời phòng</span>
-                                    </button>
-
-                                    {isHost ? (
-                                        <button 
-                                            onClick={handleStartGame}
-                                            disabled={isStarting || participants.length < 2 || participants.some(p => !p.is_host && !p.is_ready)}
-                                            className="flex-[2] py-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-black uppercase tracking-[0.2em] shadow-lg shadow-green-900/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 text-sm"
+                        {/* --- BUTTONS LOGIC - Fixed Container Height --- */}
+                        <div className="w-full h-24 flex items-center justify-center">
+                            {roomId && mode === 'custom' ? (
+                                // CUSTOM ROOM BUTTONS
+                                <div className="w-full space-y-4">
+                                    <div className="flex gap-4">
+                                        <button
+                                            onClick={handleCancelSearch}
+                                            className="flex-1 py-4 rounded-2xl bg-red-950/30 hover:bg-red-900/50 text-red-500 font-bold uppercase tracking-wider transition-all border border-red-500/30 hover:border-red-500 hover:shadow-[0_0_30px_rgba(239,68,68,0.2)] active:scale-95 backdrop-blur-md group text-sm"
                                         >
-                                            {isStarting ? (
-                                                <Loader2 size={20} className="animate-spin" />
-                                            ) : (
-                                                <Play size={20} fill="currentColor" />
-                                            )}
-                                            {isStarting ? 'Đang chuẩn bị...' : 'Bắt đầu'}
+                                            <span className="group-hover:animate-pulse">Rời phòng</span>
                                         </button>
-                                    ) : (
-                                        <button 
-                                            onClick={handleToggleReady}
-                                            className={`flex-[2] py-4 rounded-xl font-bold uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 text-sm ${
-                                                participants.find(p => p.id === user?.id)?.is_ready 
-                                                ? 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-yellow-900/20' 
-                                                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
-                                            }`}
-                                        >
-                                            {participants.find(p => p.id === user?.id)?.is_ready ? 'Huỷ sẵn sàng' : 'Sẵn sàng'}
-                                        </button>
-                                    )}
-                                </div>
-                                
-                                {searching && !matchFound && (
-                                    <div className="flex justify-center items-center px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-                                        <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest opacity-60">
-                                            Waiting for opponent...
-                                        </div>
-                                    </div>
-                                )}
 
-                                <div className="text-xs text-center text-gray-500 font-mono">
-                                    {participants.length}/2 Players Connected
-                                </div>
-                            </div>
-                        ) : (
-                            // NORMAL MATCHMAKING BUTTONS
-                            matchFound ? (
-                                <div className="w-full py-4 rounded-xl bg-green-600/20 border border-green-500/30 flex flex-col items-center justify-center animate-pulse">
-                                    <div className="text-green-500 font-black uppercase tracking-wider text-sm mb-1">
-                                        Trận đấu sẽ bắt đầu sau:
+                                        {isHost ? (
+                                            <button 
+                                                onClick={handleStartGame}
+                                                disabled={isStarting || participants.length < 2 || participants.some(p => !p.is_host && !p.is_ready)}
+                                                className="flex-[2] py-4 rounded-2xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-black uppercase tracking-[0.2em] shadow-lg shadow-green-900/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 text-sm"
+                                            >
+                                                {isStarting ? (
+                                                    <Loader2 size={20} className="animate-spin" />
+                                                ) : (
+                                                    <Play size={20} fill="currentColor" />
+                                                )}
+                                                {isStarting ? 'Chuẩn bị...' : 'Bắt đầu'}
+                                            </button>
+                                        ) : (
+                                            <button 
+                                                onClick={handleToggleReady}
+                                                className={`flex-[2] py-4 rounded-2xl font-bold uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 text-sm ${
+                                                    participants.find(p => p.id === user?.id)?.is_ready 
+                                                    ? 'bg-yellow-600 hover:bg-yellow-500 text-white shadow-yellow-900/20' 
+                                                    : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20'
+                                                }`}
+                                            >
+                                                {participants.find(p => p.id === user?.id)?.is_ready ? 'Huỷ sẵn sàng' : 'Sẵn sàng'}
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="text-white font-bold uppercase tracking-[0.2em] text-xl">
-                                        {matchCountdown !== null ? `${matchCountdown}s` : '...'}
-                                    </div>
-                                </div>
-                            ) : searching ? (
-                                <div className="flex items-center gap-4 w-full">
-                                    <button
-                                        onClick={handleCancelSearch}
-                                        className="flex-1 py-4 rounded-xl bg-red-950/30 hover:bg-red-900/50 text-red-500 font-bold uppercase tracking-[0.2em] transition-all border border-red-500/30 hover:border-red-500 hover:shadow-[0_0_30px_rgba(239,68,68,0.2)] active:scale-95 backdrop-blur-md group"
-                                    >
-                                        <span className="group-hover:animate-pulse">Hủy tìm trận</span>
-                                    </button>
-                                    <div className="shrink-0 text-right space-y-0.5 pr-2">
-                                        <div className={`${details.color} font-mono text-2xl font-bold`}>
-                                            {Math.floor(timer / 60).toString().padStart(2, '0')}:{(timer % 60).toString().padStart(2, '0')}
-                                        </div>
-                                        <div className="text-[10px] text-gray-500 font-black uppercase tracking-widest opacity-60">
-                                            Est: 00:15
-                                        </div>
+                                    
+                                  
+
+                                    <div className="text-xs text-center text-gray-500 font-mono">
+                                        {participants.length}/2 Players Connected
                                     </div>
                                 </div>
                             ) : (
-                                <button
-                                    onClick={handleFindMatch}
-                                    className={`w-full py-5 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black uppercase tracking-[0.25em] text-lg transition-all shadow-[0_0_40px_rgba(6,182,212,0.4)] hover:shadow-[0_0_60px_rgba(6,182,212,0.6)] border border-cyan-400/30 hover:scale-105 active:scale-95 group relative overflow-hidden`}
-                                >
-                                    <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.2)_50%,transparent_75%)] bg-[length:250%_250%,100%_100%] bg-[position:-100%_0,0_0] bg-no-repeat transition-[background-position_0s_ease] hover:bg-[position:200%_0,0_0] duration-[1000ms]"></div>
-                                    <span className="relative z-10 flex items-center justify-center gap-3">
-                                        <span className="hidden group-hover:inline-block animate-in fade-in slide-in-from-left-2">►</span>
-                                        Tìm trận
-                                        <span className="hidden group-hover:inline-block animate-in fade-in slide-in-from-right-2">◄</span>
-                                    </span>
-                                </button>
-                            )
-                        )}
+                                // NORMAL MATCHMAKING BUTTONS
+                                matchFound ? (
+                                    <div className="w-full py-5 rounded-2xl bg-green-600/20 border border-green-500/30 flex flex-col items-center justify-center animate-pulse backdrop-blur-md">
+                                        <div className="text-green-500 font-black uppercase tracking-wider text-xs mb-1">
+                                            Game starting in
+                                        </div>
+                                        <div className="text-4xl font-black text-white tabular-nums tracking-tighter">
+                                            {matchCountdown !== null ? `${matchCountdown}s` : '...'}
+                                        </div>
+                                    </div>
+                                ) : searching ? (
+                                    <div className="flex flex-col w-full gap-2 animate-in fade-in slide-in-from-bottom-4">
+                                        <button 
+                                            onClick={handleCancelSearch}
+                                            className="w-full py-6 bg-red-600/10 hover:bg-red-600/20 text-red-500 font-black uppercase tracking-[0.2em] border border-red-500/30 hover:border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.1)] active:scale-95 transition-all text-xl group relative overflow-hidden backdrop-blur-md"
+                                        >
+                                            <span className="relative z-10 flex items-center justify-center gap-2">
+                                                <X size={24} /> HUỶ TÌM TRẬN
+                                            </span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button 
+                                        onClick={handleFindMatch}
+                                        className={`w-full py-6 bg-gradient-to-r ${
+                                            mode.toLowerCase() === 'blitzmatch' 
+                                            ? 'from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(220,38,38,0.7)]'
+                                            : mode.toLowerCase() === 'ranked'
+                                                ? 'from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 shadow-[0_10px_40px_-10px_rgba(192,38,211,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(192,38,211,0.7)]'
+                                                : 'from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-[0_10px_40px_-10px_rgba(37,99,235,0.5)] hover:shadow-[0_20px_60px_-10px_rgba(37,99,235,0.7)]'
+                                        } text-white font-black uppercase tracking-[0.25em] hover:-translate-y-1 active:translate-y-0 active:scale-95 transition-all text-xl group relative overflow-hidden`}
+                                    >
+                                        <span className="relative z-10 flex items-center justify-center gap-3">
+                                            <Swords size={28} className="group-hover:rotate-12 transition-transform duration-500" />
+                                            <span>TÌM TRẬN</span>
+                                        </span>
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12 translate-x-[-200%] group-hover:animate-shine"></div>
+                                    </button>
+                                )
+                            )}
+                        </div>
                  </div>
             </div>
             
-            {/* Background Decorations */}
-            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-fuchsia-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+            {/* Top Glow RESTORED - Dynamic per Mode */}
+            <div className={`absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full blur-[120px] pointer-events-none opacity-50 z-0 transition-colors duration-1000 ${
+                mode.toLowerCase() === 'blitzmatch' 
+                ? 'bg-red-600/30 animate-pulse' 
+                : mode.toLowerCase() === 'ranked'
+                    ? 'bg-fuchsia-600/20'
+                    : 'bg-blue-600/20'
+            }`}></div>
         </div>
     );
 };

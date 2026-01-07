@@ -30,7 +30,6 @@ interface ClanInfo {
   description: string;
   icon: string;
   color: string;
-  level: number;
   members_count: number;
   role?: string;
 }
@@ -251,7 +250,7 @@ const ClanView = () => {
     try {
       const { data: clanDetails, error: clanError } = await supabase
         .from('clans')
-        .select('id, name, tag, description, icon, color, level, members_count')
+        .select('id, name, tag, description, icon, color, members_count')
         .eq('id', clanId)
         .single();
 
@@ -582,7 +581,7 @@ setShowPromoteConfirm(true);
       {!viewingClan && (
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-white/5 pb-6">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-500 bg-clip-text text-transparent mb-1">
+            <h1 className="text-3xl font-bold text-white mb-1">
               Clan / Đội
             </h1>
             <p className="text-gray-400">Quản lý đội ngũ, chiêu mộ thành viên và leo hạng Team.</p>
@@ -1117,7 +1116,6 @@ const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoi
                           name={clan.name}
                           tag={clan.tag}
                           members={clan.members_count} 
-                          lvl={clan.level} 
                           desc={clan.description} 
                           userClanStatus={userClanStatus[clan.id]}
                           isUserInAnyClan={hasClan}
@@ -1142,7 +1140,6 @@ interface ClanRowProps {
   tag: string;
   members: number;
   desc: string;
-  lvl: number;
   userClanStatus?: 'pending' | 'member';
   isUserInAnyClan: boolean;
   icon: string;
@@ -1152,7 +1149,7 @@ interface ClanRowProps {
   onView?: () => void;
 }
 
-const ClanRow = ({ name, tag, members, desc, lvl, userClanStatus, isUserInAnyClan, icon, color, onJoin, onCancel, onView }: ClanRowProps) => {
+const ClanRow = ({ name, tag, members, desc, userClanStatus, isUserInAnyClan, icon, color, onJoin, onCancel, onView }: ClanRowProps) => {
   const iconObj = CLAN_ICONS.find(i => i.id === icon) || CLAN_ICONS[0];
   const colorObj = CLAN_COLORS.find(c => c.id === color) || CLAN_COLORS[0];
   const IconComp = iconObj.icon;
@@ -1173,9 +1170,6 @@ const ClanRow = ({ name, tag, members, desc, lvl, userClanStatus, isUserInAnyCla
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
               <Users size={12} /> {members}/50 Thành viên
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              <Trophy size={12} /> Cấp {lvl}
             </div>
           </div>
         </div>

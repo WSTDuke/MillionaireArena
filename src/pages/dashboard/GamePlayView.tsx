@@ -15,7 +15,6 @@ import RankBadge from '../../components/shared/RankBadge';
 interface Profile {
     display_name: string;
     avatar_url: string;
-    level?: number;
     rank_name?: string;
     mmr?: number | null;
 }
@@ -26,7 +25,6 @@ interface Participant {
     avatar_url: string;
     is_ready: boolean;
     is_host: boolean;
-    level?: number;
     rank?: string;
 }
 
@@ -123,48 +121,41 @@ const GamePlayView = () => {
 
         const getData = async () => {
             try {
+                // 1. Get User Session
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) {
                     setIsLoadingQuestions(false);
                     return;
                 }
                 setUserId(user.id);
-                // Also get profile for display
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', user.id)
-                    .single();
-                if (profile) setProfile(profile);
 
-                if (roomId) {
-                    // Fetch Room settings
-                    const { data: roomData, error: roomError } = await supabase
-                        .from('rooms')
-                        .select('*')
-                        .eq('id', roomId)
-                        .single();
+                // 2. Fetch Profile and Room Data parallelly
+                const [profileRes, roomRes] = await Promise.all([
+                    supabase.from('profiles').select('*').eq('id', user.id).single(),
+                    roomId 
+                        ? supabase.from('rooms').select('*').eq('id', roomId).single() 
+                        : Promise.resolve({ data: null, error: null })
+                ]);
 
-                    if (roomData) {
-                        if (roomData.settings) {
-                            setRoomSettings(roomData.settings);
-                        }
+                if (profileRes.data) setProfile(profileRes.data);
 
-                        // SYNC QUESTIONS FROM DATABASE
-                        if (roomData.questions && Array.isArray(roomData.questions)) {
-                            console.log("Using synchronized questions from DB:", roomData.questions.length);
-                            setQuestions(roomData.questions);
-                            setIsLoadingQuestions(false);
-                        } else {
-                            console.warn("No questions found in room data, guest might be waiting for host...");
-                        }
+                if (roomRes.data) {
+                    const roomData = roomRes.data;
+                    if (roomData.settings) setRoomSettings(roomData.settings);
 
-                        // Get Opponent info
-                        const opp = roomData.participants?.find((p: Participant) => p.id !== user.id);
-                        if (opp) setOpponent(opp);
-                    } else if (roomError) {
-                         console.error("Error fetching room settings:", roomError.message, roomError);
+                    // Sync questions
+                    if (roomData.questions && Array.isArray(roomData.questions)) {
+                        setQuestions(roomData.questions);
+                    } else if (isBlitzmatch || isRanked) {
+                        // If no questions in initial fetch, try a quick secondary fetch
+                        console.warn("Retrying question fetch...");
                     }
+
+                    // Sync opponent
+                    const opp = roomData.participants?.find((p: Participant) => p.id !== user.id);
+                    if (opp) setOpponent(opp);
+                    
+                    setIsLoadingQuestions(false);
                 } else if (!isRanked && !isBlitzmatch) {
                     // For solo/testing
                     const r1 = await fetchQuestions(10, 'easy', user.id);
@@ -643,27 +634,32 @@ const GamePlayView = () => {
     useEffect(() => {
         let timer: ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>;
         if (gameStage === 'preparing') {
+            // Only start counting down once everything is loaded
+            if (isLoadingQuestions) return;
+
             timer = setInterval(() => {
                 setIntroTimer(prev => {
                     if (prev <= 1) {
-                        // Only move to starting if questions are loaded, otherwise stay at 1
-                        if (!isLoadingQuestions) {
-                            setGameStage('starting');
-                            return 0;
-                        }
-                        return 1; // Hang at 1 until loaded
+                        setGameStage('starting');
+                        return 0;
                     }
                     return prev - 1;
                 });
             }, 1000);
         } else if (gameStage === 'starting') {
+            // Snappier transition to playing state
             timer = setTimeout(() => {
                 setGameStage('playing');
                 setShowRoundIntro(true);
                 setTimeout(() => setShowRoundIntro(false), 2000);
-            }, 1500);
+            }, 500);
         }
-        return () => clearInterval(timer);
+        return () => {
+            if (timer) {
+                if (gameStage === 'preparing') clearInterval(timer as any);
+                else clearTimeout(timer as any);
+            }
+        };
     }, [gameStage, isLoadingQuestions]);
 
     useEffect(() => {
@@ -972,16 +968,59 @@ const GamePlayView = () => {
                             </div>
                         </div>
 
-                        {/* Center VS */}
-                        <div className="relative flex items-center justify-center w-32 h-32 md:w-48 md:h-48">
-                            <div className="absolute inset-0 bg-blue-500/20 blur-3xl animate-pulse"></div>
+                        {/* Center VS / Countdown */}
+                        <div className="relative flex items-center justify-center w-48 h-48 md:w-64 md:h-64">
+                            {/* Dynamic Mode-Aware Background Glow */}
+                            <div className={`absolute inset-0 blur-[100px] rounded-full opacity-30 animate-pulse ${
+                                isRanked ? 'bg-fuchsia-600' : isBlitzmatch ? 'bg-red-600' : 'bg-blue-600'
+                            }`}></div>
+
                             {gameStage === 'preparing' ? (
-                                <div className="flex flex-col items-center">
-                                    <div className="text-6xl md:text-8xl font-black italic text-white/10 tracking-tighter animate-pulse">VS</div>
-                                    <div className="absolute text-3xl md:text-5xl font-black text-blue-500 animate-bounce">{introTimer}</div>
+                                <div className="relative flex items-center justify-center w-full h-full">
+                                    {/* Large VS Background */}
+                                    <div className="absolute text-8xl md:text-[10rem] font-black italic text-white/5 tracking-tighter select-none">
+                                        VS
+                                    </div>
+                                    
+                                    {/* Progress Ring */}
+                                    <svg className="absolute inset-0 w-full h-full -rotate-90 filter drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                                        <circle 
+                                            cx="50%" cy="50%" r="45%" 
+                                            className="stroke-white/5 fill-none" 
+                                            strokeWidth="2" 
+                                        />
+                                        <circle 
+                                            cx="50%" cy="50%" r="45%" 
+                                            className={`fill-none transition-all duration-1000 ease-linear ${
+                                                isRanked ? 'stroke-fuchsia-500' : isBlitzmatch ? 'stroke-red-500' : 'stroke-blue-500'
+                                            }`} 
+                                            strokeWidth="6" 
+                                            strokeDasharray="100 100"
+                                            strokeDashoffset={100 - (100 * introTimer / 5)}
+                                            pathLength="100"
+                                            strokeLinecap="round"
+                                        />
+                                    </svg>
+
+                                    {/* Counting Number */}
+                                    <div key={introTimer} className="relative z-10 text-7xl md:text-9xl font-black text-white tabular-nums drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] animate-in zoom-in-150 fade-in duration-300 italic">
+                                        {introTimer}
+                                    </div>
+
+                                    {/* Outer Scanning Ornament */}
+                                    <div className={`absolute inset-[-20px] border-t-2 border-r-2 rounded-full opacity-20 animate-[spin_6s_linear_infinite] ${
+                                        isRanked ? 'border-fuchsia-400' : isBlitzmatch ? 'border-red-400' : 'border-blue-400'
+                                    }`}></div>
                                 </div>
                             ) : (
-                                <div className="text-4xl md:text-6xl font-black text-green-500 uppercase tracking-widest animate-in zoom-in-150 text-center duration-500">Bắt đầu!</div>
+                                <div className="relative flex flex-col items-center animate-in zoom-in-150 duration-700">
+                                    <div className={`text-6xl md:text-8xl font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-b ${
+                                        isRanked ? 'from-fuchsia-400 to-fuchsia-700' : isBlitzmatch ? 'from-red-400 to-red-700' : 'from-blue-400 to-blue-700 text-center'
+                                    } drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]`}>
+                                        Bắt đầu!
+                                    </div>
+                                    <div className="absolute -inset-10 bg-white/10 blur-3xl -z-10 rounded-full animate-ping"></div>
+                                </div>
                             )}
                         </div>
 
