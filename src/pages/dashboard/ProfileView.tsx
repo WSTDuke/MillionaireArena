@@ -233,7 +233,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
 
           {/* Actions */}
           <div className="flex gap-3 pb-4">
-             <button className="w-12 h-12 lg:w-14 lg:h-14 flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-xl">
+             <button className="w-12 h-12 lg:w-14 lg:h-13 flex items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10  text-gray-400 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-xl">
                 <Share2 size={20} />
              </button>
              
@@ -241,7 +241,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
                <Link to={`/dashboard/settings?userId=${profile?.id || user?.id}`}>
                  <button 
                    onClick={onEditProfile}
-                   className="px-8 py-3 lg:py-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-xs lg:text-sm rounded-2xl shadow-[0_0_30px_rgba(192,38,211,0.4)] hover:shadow-[0_0_50px_rgba(192,38,211,0.6)] flex items-center gap-3 transition-all hover:scale-105 active:scale-95 uppercase tracking-[0.2em]"
+                   className="px-8 py-3 lg:py-4 bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black text-xs lg:text-sm  shadow-[0_0_30px_rgba(192,38,211,0.4)] hover:shadow-[0_0_50px_rgba(192,38,211,0.6)] flex items-center gap-3 transition-all hover:scale-105 active:scale-95 uppercase tracking-[0.2em]"
                  >
                    <Edit3 size={20} /> Thiết lập
                  </button>

@@ -205,7 +205,7 @@ const DashboardPage = () => {
               </div>
             </div>
             <div className="hidden md:flex flex-col items-start overflow-hidden">
-              <span className="font-black text-xs uppercase tracking-widest text-white truncate w-full text-left">
+              <span className="font-black text-sm uppercase tracking-widest text-white truncate w-full text-left">
                 {profile?.display_name || "Chiến Binh"}
               </span>
               <span
@@ -326,10 +326,10 @@ const DashboardPage = () => {
                 {/* Content */}
                 <div className="flex flex-col items-center gap-1 relative z-10">
                    <div className="p-1 rounded bg-fuchsia-500/10 border border-fuchsia-500/20 group-hover:bg-fuchsia-600 group-hover:border-fuchsia-400 transition-all duration-300">
-                      <Gamepad2 size={14} className="text-fuchsia-400 group-hover:text-white transition-colors" />
+                      <Swords size={14} className="text-fuchsia-400 group-hover:text-white transition-colors" />
                    </div>
                    <span className="font-black text-[10px] uppercase tracking-[0.4em] text-fuchsia-500 group-hover:text-fuchsia-300 group-hover:drop-shadow-[0_0_8px_#d946ef] transition-all">
-                     Sảnh đấu
+                     Sảnh chính
                    </span>
                 </div>
 
@@ -376,6 +376,7 @@ const NavItem = ({
 }) => (
   <NavLink
     to={to}
+    end
     className={({ isActive }) =>
       `flex items-center gap-3 px-4 py-3 transition-all group relative overflow-hidden ${
         isActive
