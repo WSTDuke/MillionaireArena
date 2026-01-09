@@ -151,7 +151,7 @@ const DashboardPage = () => {
           />
           <NavItem
             icon={Shield}
-            label="Bang hội"
+            label="CLAN"
             to="/dashboard/clan"
           />
           <NavItem

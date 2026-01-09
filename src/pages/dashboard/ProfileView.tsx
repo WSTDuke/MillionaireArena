@@ -215,7 +215,7 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
 
              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
                 <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                   <Target size={14} className="text-cyan-400" /> Tham chiến: {joinDate}
+                   <Target size={14} className="text-cyan-400" /> Tham gia: {joinDate}
                 </div>
                 <div 
                    style={{ color: rankInfo.color, borderColor: `${rankInfo.color}33`, backgroundColor: `${rankInfo.color}11` }}
@@ -302,13 +302,13 @@ const ProfileView = ({ onEditProfile }: { onEditProfile?: () => void }) => {
            <div className="glass-panel border-white/5 rounded-3xl p-8 tech-border relative overflow-hidden">
               <div className="absolute inset-0 bg-dot-pattern opacity-5"></div>
               <h3 className="text-xs font-black text-cyan-500 uppercase tracking-widest mb-6 flex items-center gap-2">
-                 <Fingerprint size={14} /> Cơ sở dữ liệu
+                 <Fingerprint size={14} /> Thông tin
               </h3>
               
               <div className="space-y-5">
                  <DataField icon={Fingerprint} label="Mã định danh" value={profile?.id?.slice(0, 12).toUpperCase() + '...'} onCopy={copyId} copied={copiedId} />
                  <DataField icon={Mail} label="Địa chỉ Email" value={profile?.email || 'N/A'} color="text-indigo-400" />
-                 <DataField icon={Shield} label="Quân đoàn" value={clanInfo ? `[${clanInfo.tag}] ${clanInfo.name}` : 'LANG THANG'} color={clanInfo ? 'text-fuchsia-400' : 'text-gray-600'} />
+                 <DataField icon={Shield} label="Quân đoàn" value={clanInfo ? `${clanInfo.name} [${clanInfo.tag}]` : 'CHƯA CÓ CLAN'} color={clanInfo ? 'text-fuchsia-400 uppercase' : 'text-gray-600 uppercase'} />
               </div>
            </div>
         </div>

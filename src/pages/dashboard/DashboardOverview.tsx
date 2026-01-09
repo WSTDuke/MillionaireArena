@@ -104,7 +104,7 @@ const DashboardOverview = () => {
       {/* Welcome Section - Tech Hero */}
       <div className="mb-10 relative group">
         {/* Outer Tech Frame */}
-        <div className="absolute inset-0 bg-neutral-900 border border-white/5 rounded-3xl overflow-hidden">
+        <div className="absolute inset-0 bg-neutral-900 border border-white/5  overflow-hidden">
           <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-fuchsia-500/50 to-transparent"></div>
           {/* Cyber Scanline Loop */}

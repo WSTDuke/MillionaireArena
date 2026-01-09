@@ -458,11 +458,11 @@ const ArenaView = () => {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mt-8">
         
         {/* Quick Join / Lobbies */}
-        <div className="xl:col-span-2 space-y-6 mt-8">
+        <div className="xl:col-span-2 space-y-6">
              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <Users className="text-fuchsia-500" /> Phòng chờ tuỳ chọn (Custom)
-                </h3>
+                <span className="text-2xl font-bold flex items-center gap-2 uppercase">
+                  <span className="text-fuchsia-500">|</span>  Phòng chờ tuỳ chọn 
+                </span>
                 
                 <div className="flex items-center gap-3">
                     <div className="flex bg-neutral-900 border border-white/10 rounded-xl overflow-hidden focus-within:border-fuchsia-500/50 transition-colors h-10">
@@ -531,7 +531,7 @@ const ArenaView = () => {
 
         {/* Sidebar: Ranking / History */}
         <div className="space-y-6">
-          <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-b-4xl p-6 relative overflow-hidden">
+          <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-b-lg p-6 relative overflow-hidden">
              <div className="absolute top-0 right-0 p-4 opacity-10">
                <Bookmark size={100} />
              </div>
@@ -573,7 +573,7 @@ const ArenaView = () => {
               </div>
              
              <Link to="/dashboard/ranking">
-             <button className="w-full mt-6 py-4 bg-white/5 hover:bg-white/10 border border-white/5 text-white text-sm font-black uppercase tracking-widest rounded-2xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2">
+             <button className="w-full mt-6 py-4 bg-white/5 hover:bg-white/10 border border-white/5 text-white text-sm font-black uppercase tracking-widest  transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2">
                <Trophy size={18} className="text-yellow-500" /> Bảng vinh danh
              </button></Link>
           </div>

@@ -596,7 +596,7 @@ setShowPromoteConfirm(true);
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-fuchsia-400">Social Sector // Clans</span>
            </div>
            <h1 className="text-5xl font-black text-white tracking-tighter uppercase italic">
-             Hệ Thống <span className="text-fuchsia-500">Bang Hội</span>
+             Hệ Thống <span className="text-fuchsia-500">CLAN</span>
            </h1>
            <div className="h-0.5 w-32 bg-gradient-to-r from-fuchsia-600 to-transparent mt-2"></div>
            <p className="text-gray-500 mt-4 font-bold max-w-lg text-sm leading-relaxed">
@@ -613,7 +613,7 @@ setShowPromoteConfirm(true);
             className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] relative transition-all ${activeTab === 'my-clan' ? 'text-fuchsia-500' : 'text-gray-500 hover:text-gray-300'}`}
           >
             {activeTab === 'my-clan' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
-            Sector Của Tôi
+            Clan Của Tôi
           </button>
           <button 
             onClick={() => setActiveTab('find-clan')}
@@ -688,6 +688,7 @@ setShowPromoteConfirm(true);
           onCancelRequest={handleCancelRequest}
           onViewDetails={handleViewClanDetails}
           hasClan={!!clanInfo}
+          userClanId={clanInfo?.id}
         />
       )}
 
@@ -1007,7 +1008,7 @@ const MemberRow = ({
   const rankInfo = getRankFromMMR(member.profiles?.mmr);
 
   return (
-    <div className="group flex items-center justify-between p-5 bg-white/5 border border-white/5 hover:bg-fuchsia-500/5 hover:border-fuchsia-500/20 transition-all relative overflow-hidden">
+    <div className="group flex items-center justify-between p-5 bg-white/5 border border-white/5 hover:bg-fuchsia-500/5 hover:border-fuchsia-500/20 transition-all relative overflow-visible">
       {/* Selection Glow */}
       <div className="absolute inset-y-0 left-0 w-1 bg-fuchsia-500 opacity-0 group-hover:opacity-100 transition-all shadow-[0_0_15px_#d946ef]" />
       
@@ -1026,7 +1027,7 @@ const MemberRow = ({
         <div className="flex-1">
           <div className="flex flex-col md:flex-row md:items-center gap-2 mb-1">
             <div className="font-black text-white flex items-center gap-2 text-xl tracking-tighter uppercase italic">
-              {isCurrentUser ? 'Chủ Thể' : displayName} 
+              {isCurrentUser ? 'Bạn' : displayName} 
               {isLeader && <Crown size={20} className="text-fuchsia-500 drop-shadow-[0_0_10px_#d946ef]" fill="currentColor" />}
             </div>
             <div 
@@ -1143,7 +1144,7 @@ const RequestRow = ({
     );
 };
 
-const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest, onViewDetails, hasClan }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void, onViewDetails: (id: string) => void, hasClan: boolean }) => {
+const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest, onViewDetails, hasClan, userClanId }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void, onViewDetails: (id: string) => void, hasClan: boolean, userClanId?: string }) => {
     return (
         <div className="space-y-10">
              {/* Search Bar - Tech Edition */}
@@ -1201,6 +1202,8 @@ const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoi
                               description: clan.description,
                               member_count: clan.members_count,
                               tag: clan.tag,
+                              icon: clan.icon,
+                              color: clan.color,
                               experience: 0, 
                             }}
                             onJoin={onJoinClan}
@@ -1208,6 +1211,7 @@ const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoi
                             onDetails={onViewDetails}
                             status={userClanStatus[clan.id]}
                             hasClan={hasClan}
+                            userClanId={userClanId}
                           />
                         ))}
                       </div>
@@ -1231,15 +1235,22 @@ interface ClanCardProps {
     member_count: number;
     experience?: number;
     tag?: string;
+    icon?: string;
+    color?: string;
   };
   onJoin: (id: string) => void;
   onCancel: (id: string) => void;
   onDetails: (id: string) => void;
   status?: 'pending' | 'member';
   hasClan?: boolean;
+  userClanId?: string;
 }
 
-const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan }: ClanCardProps) => {
+const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan, userClanId }: ClanCardProps) => {
+  const selectedIconObj = CLAN_ICONS.find(i => i.id === clan.icon) || CLAN_ICONS[0];
+  const selectedColorObj = CLAN_COLORS.find(c => c.id === clan.color) || CLAN_COLORS[0];
+  const ClanIcon = selectedIconObj.icon;
+
   return (
     <div className="group relative bg-neutral-950 border border-white/10 hover:border-fuchsia-500/50 transition-all overflow-hidden flex flex-col h-full shadow-2xl">
       {/* Background patterns */}
@@ -1253,10 +1264,14 @@ const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan }: ClanCa
       <div className="p-8 flex flex-col flex-1 relative z-10">
         <div className="flex items-start justify-between mb-8">
            <div 
-             className="w-16 h-16 bg-black border border-fuchsia-500/30 flex items-center justify-center text-fuchsia-500 shadow-[0_0_15px_rgba(192,38,211,0.1)] group-hover:border-fuchsia-500 transition-all"
-             style={{ clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)' }}
+             className="w-16 h-16 bg-black border flex items-center justify-center shadow-[0_0_15px_rgba(192,38,211,0.1)] group-hover:border-opacity-100 transition-all"
+             style={{ 
+               clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)',
+               borderColor: `${selectedColorObj.hex}50`,
+               color: selectedColorObj.hex
+             }}
            >
-              <Shield size={32} />
+              <ClanIcon size={32} />
            </div>
            
            <div className="text-right">
@@ -1286,7 +1301,7 @@ const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan }: ClanCa
            </div>
            <div className="p-4 bg-black border border-white/5 relative group-hover:border-fuchsia-500/20 transition-colors">
               <div className="text-[9px] font-black text-gray-600 uppercase tracking-widest mb-1">Trạng thái</div>
-              <div className="text-sm font-black text-white uppercase tracking-tighter italic">RECRUIT</div>
+              <div className="text-sm font-black text-white uppercase tracking-tighter italic">Hoạt động</div>
            </div>
         </div>
 
@@ -1299,7 +1314,7 @@ const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan }: ClanCa
              Chi tiết
            </button>
            
-            {!status && !hasClan && (
+            {!status && !hasClan && clan.id !== userClanId && (
              <button 
                onClick={() => onJoin(clan.id)}
                className="flex-1 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black text-[10px] uppercase tracking-[0.2em] transition-all shadow-[0_0_15px_rgba(192,38,211,0.2)] active:scale-95 flex items-center justify-center gap-2"
@@ -1321,7 +1336,7 @@ const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan }: ClanCa
            
            {status === 'member' && (
               <div className="flex-1 py-3 border border-blue-500/30 text-blue-400 font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 italic">
-                 // ASSIGNED
+                 Tham gia
               </div>
            )}
         </div>
