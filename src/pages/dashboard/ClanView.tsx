@@ -50,6 +50,8 @@ interface MemberInfo {
 
 interface DashboardContext {
   user: { id: string } | null;
+  profile: { balance?: number } | null;
+  setProfile: React.Dispatch<React.SetStateAction<{ id: string; display_name: string | null; avatar_url: string | null; mmr: number | null; balance?: number } | null>>;
   dashboardCache: {
     recommendedClans?: ClanInfo[];
     clanInfo?: ClanInfo | null;
@@ -64,7 +66,7 @@ interface DashboardContext {
 }
 
 const ClanView = () => {
-  const { user, dashboardCache, setDashboardCache } = useOutletContext<DashboardContext>();
+  const { user, profile, setProfile, dashboardCache, setDashboardCache } = useOutletContext<DashboardContext>();
 
   const [activeTab, setActiveTab] = useState('find-clan');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -313,31 +315,28 @@ const ClanView = () => {
   const handleCreateClan = async (data: { name: string; tag: string; description: string; icon: string; color: string }) => {
     if (!user?.id) return;
     try {
-      const { data: newClan, error: createError } = await supabase
-        .from('clans')
-        .insert({
-          name: data.name,
-          tag: data.tag,
-          description: data.description,
-          icon: data.icon,
-          color: data.color,
-          creator_id: user.id,
-          members_count: 1 // Starts with 1 member
-        })
-        .select()
-        .single();
+      const { data: result, error: createError } = await supabase.rpc('create_clan_with_payment', {
+        p_name: data.name,
+        p_tag: data.tag,
+        p_description: data.description,
+        p_icon: data.icon,
+        p_color: data.color,
+        p_cost: 1000
+      });
+
       if (createError) throw createError;
-      const { error: joinError } = await supabase
-        .from('clan_members')
-        .insert({
-          clan_id: newClan.id,
-          user_id: user.id,
-          role: 'leader',
-          status: 'approved'
-        });
-      if (joinError) throw joinError;
+      
+      if (result && !result.success) {
+        throw new Error(result.message || 'Lỗi khi tạo Clan');
+      }
+
       await fetchClanData();
       setShowCreateModal(false);
+      handleShowToast('Tạo Clan thành công! (Đã trừ 1000 🪙)', 'success');
+      // Update local balance if we have access to it, or rely on realtime/refetch
+      if (result.new_balance !== undefined) {
+         setProfile(prev => prev ? ({ ...prev, balance: result.new_balance }) : prev);
+      }
     } catch (err) {
       console.error('Error creating clan:', err);
       handleShowToast(err.message || 'Lỗi khi tạo Clan. Vui lòng thử lại.', 'error');
@@ -347,31 +346,55 @@ const ClanView = () => {
   const handleUpdateClan = async (data: { name: string; tag: string; description: string; icon: string; color: string }) => {
     if (!user?.id || !clanInfo?.id) return;
     try {
-      const { data: result, error: updateError } = await supabase.rpc('update_clan_settings', {
+      const { data: result, error: updateError } = await supabase.rpc('update_clan_with_payment', {
         p_clan_id: clanInfo.id,
-        p_user_id: user.id,
+        // p_user_id is handled by auth.uid() in the RPC
         p_name: data.name,
         p_tag: data.tag,
         p_description: data.description,
         p_icon: data.icon,
         p_color: data.color,
-        p_cost: 200
+        p_cost: 500
       });
 
       if (updateError) throw updateError;
       
       if (result && !result.success) {
-        handleShowToast(result.message, 'error');
-        return;
+        throw new Error(result.message || 'Lỗi cập nhật');
       }
 
       // Success
       await fetchClanData(false);
       setShowUpdateModal(false);
-      handleShowToast('Cập nhật Clan thành công! (Đã trừ 200 🪙)', 'success');
-    } catch (err) {
-      console.error('Error updating clan:', err);
-      handleShowToast(err.message || 'Lỗi khi cập nhật Clan.', 'error');
+      handleShowToast('Cập nhật Clan thành công! (Đã trừ 500 🪙)', 'success');
+      
+      if (result.new_balance !== undefined) {
+         setProfile(prev => prev ? ({ ...prev, balance: result.new_balance }) : prev);
+      }
+    } catch (err: any) {
+      console.error('Error updating clan details:', err);
+      // Log the full structure to help debug "Object" errors
+      console.log('Full Error Object:', JSON.stringify(err, null, 2));
+
+      let errorMessage = 'Lỗi khi cập nhật Clan.';
+      
+      // Try to extract the most relevant message
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.error_description) {
+        errorMessage = err.error_description;
+      } else if (err?.details) {
+        errorMessage = err.details;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+
+      // Specific check for the likely insufficient funds case from the PL/pgSQL function
+      if (errorMessage.includes('Insufficient funds') || (err?.details && err.details.includes('Insufficient funds'))) {
+         errorMessage = 'Số dư không đủ để cập nhật (Cần 500 🪙).';
+      }
+
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -696,6 +719,7 @@ setShowPromoteConfirm(true);
         isOpen={showCreateModal} 
         onClose={() => setShowCreateModal(false)}
         onSubmit={handleCreateClan}
+        currentBalance={profile?.balance || 0}
       />
 
       {clanInfo && (
@@ -704,6 +728,7 @@ setShowPromoteConfirm(true);
           isOpen={showUpdateModal}
           onClose={() => setShowUpdateModal(false)}
           onSubmit={handleUpdateClan}
+          currentBalance={profile?.balance || 0}
           initialData={{
             name: clanInfo.name,
             tag: clanInfo.tag,
@@ -834,9 +859,9 @@ const MyClanSection = ({
 
             {hasClan && (
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-10">
-                 <StatBadge icon={Users} label="Sơ đồ quân số" value={`${members.length}/50`} />
-                 <StatBadge icon={Trophy} label="Rank" value="TIỀN VỆ" color="text-fuchsia-400" />
-                 <StatBadge icon={Target} label="Win Efficiency" value="-- %" color="text-blue-400" />
+                 <StatBadge icon={Users} label="Thành viên" value={`${members.length}/50`} />
+                 <StatBadge icon={Trophy} label="Xếp hạng" value="TIỀN VỆ" color="text-fuchsia-400" />
+                 <StatBadge icon={Target} label="Tỷ lệ thắng" value="-- %" color="text-blue-400" />
               </div>
             )}
 
@@ -1044,12 +1069,7 @@ const MemberRow = ({
       </div>
 
       {/* Actions Trigger */}
-      <div className="flex items-center gap-4">
-        <div className="hidden md:flex flex-col items-end opacity-40 group-hover:opacity-100 transition-opacity">
-           <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Efficiency</div>
-           <div className="text-lg font-black text-white tabular-nums">--%</div>
-        </div>
-
+      <div>
         <button 
           onClick={() => setShowMenu(!showMenu)}
           className="p-3 bg-black border border-white/10 text-gray-500 hover:text-white hover:border-fuchsia-500/50 transition-all shadow-xl group-hover:shadow-[0_0_15px_rgba(192,38,211,0.1)]"

@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { CreditCard, Check, Copy, ChevronLeft, Gem, ShieldCheck, X, AlertTriangle } from 'lucide-react';
+import { CreditCard, Check, Copy, ChevronLeft, Gem, ShieldCheck, X, AlertTriangle, Coins } from 'lucide-react';
+import { useOutletContext, useNavigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
 interface GoldPackage {
   id: string;
@@ -7,19 +9,31 @@ interface GoldPackage {
   gold: number;
   bonus: number;
   popular?: boolean;
-  color: string;
 }
 
 const GOLD_PACKAGES: GoldPackage[] = [
-  { id: 'p1', price: 20000, gold: 2000, bonus: 0, color: 'text-gray-400' },
-  { id: 'p2', price: 50000, gold: 5000, bonus: 500, color: 'text-blue-400' },
-  { id: 'p3', price: 100000, gold: 10000, bonus: 2000, popular: true, color: 'text-purple-400' },
-  { id: 'p4', price: 200000, gold: 20000, bonus: 5000, color: 'text-yellow-400' },
-  { id: 'p5', price: 500000, gold: 50000, bonus: 15000, color: 'text-orange-400' },
-  { id: 'p6', price: 1000000, gold: 100000, bonus: 50000, color: 'text-red-500' },
+  { id: 'p1', price: 50000,   gold: 1000,  bonus: 0 },          // cơ bản
+  { id: 'p2', price: 100000,  gold: 2200,  bonus: 200 },        // ~10%
+  { id: 'p3', price: 200000,  gold: 5000,  bonus: 800, popular: true }, // ~16%
+  { id: 'p4', price: 500000,  gold: 12000, bonus: 1000 },       // ~25%
+  { id: 'p5', price: 1000000, gold: 25000, bonus: 2000 },     // ~40%
+  { id: 'p6', price: 2000000, gold: 55000, bonus: 3000 }      // ~45%
 ];
 
+interface DashboardContext {
+  user: any;
+  profile: {
+    id: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    mmr: number | null;
+    balance?: number; // Added balance to profile for local state update
+  } | null;
+}
+
 const PaymentView = () => {
+  const { profile, setProfile, showToast } = useOutletContext<DashboardContext & { setProfile: any, showToast: any }>();
+  const navigate = useNavigate();
   const [selectedPackage, setSelectedPackage] = useState<GoldPackage | null>(null);
   const [step, setStep] = useState<'selection' | 'confirm' | 'payment'>('selection');
 
@@ -43,6 +57,43 @@ const PaymentView = () => {
     }
   };
 
+  const handlePaymentSuccess = async () => {
+    if (!selectedPackage || !profile) return;
+    
+    // Simulate API call to update server
+    // In real app, this would be a backend verification
+    const totalGold = selectedPackage.gold + selectedPackage.bonus;
+    
+    try {
+      const { data: result, error } = await supabase.rpc('handle_transaction', {
+         p_user_id: profile.id,
+         p_amount: totalGold,
+         p_type: 'deposit',
+         p_description: `Deposit: ${selectedPackage.id}`,
+         p_metadata: { package_id: selectedPackage.id, price: selectedPackage.price }
+      });
+
+      if (error) throw error;
+
+      // Update local state immediately for UI feedback
+      setProfile((prev: any) => ({
+        ...prev,
+        balance: result.new_balance
+      }));
+
+      showToast(
+        <span className="flex items-center gap-2">
+          Nạp thành công +{formatNumber(totalGold)} <Coins size={16} className="text-yellow-500" />
+        </span>, 
+        'success'
+      );
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Payment error:', err);
+      showToast('Giao dịch thất bại. Vui lòng liên hệ hỗ trợ.', 'error');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
   };
@@ -50,6 +101,9 @@ const PaymentView = () => {
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('en-US').format(num);
   };
+
+  // Safe username for transfer content (remove spaces/accents if needed in real app, but for now just display_name)
+  const transferContent = `MMA ${selectedPackage?.id} ${profile?.display_name || 'UNKNOWN'}`;
 
   return (
     <div className="animate-fade-in-up pb-10 max-w-6xl mx-auto relative">
@@ -81,19 +135,15 @@ const PaymentView = () => {
             >
               {pkg.popular && (
                 <div className="absolute top-0 right-0 bg-yellow-500 text-black text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-bl-xl z-20">
-                  Best Value
+                  Best Seller
                 </div>
               )}
               
               <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               
               <div className="p-8 flex flex-col items-center text-center relative z-10">
-                <div className={`w-20 h-20 rounded-full bg-white/5 mb-6 flex items-center justify-center group-hover:scale-110 transition-transform duration-500 ${pkg.color}`}>
-                   <Gem size={32} className="drop-shadow-[0_0_10px_currentColor]" />
-                </div>
-                
-                <h3 className="text-3xl font-black text-white italic tracking-tighter mb-1">
-                  {formatNumber(pkg.gold + pkg.bonus)} <span className="text-sm font-bold text-yellow-500 not-italic tracking-normal">VÀNG</span>
+                <h3 className="flex items-center gap-2 text-3xl font-black text-white italic tracking-tighter mb-1">
+                  {formatNumber(pkg.gold + pkg.bonus)} <Coins size={16} className="text-yellow-500 drop-shadow-[0_0_10px_currentColor]" />
                 </h3>
                 
                 {pkg.bonus > 0 && (
@@ -125,7 +175,7 @@ const PaymentView = () => {
 
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-yellow-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 text-yellow-500">
-                  <AlertTriangle size={32} />
+                  <Coins size={32} />
                 </div>
                 <h3 className="text-xl font-black text-white uppercase tracking-tight">Xác nhận giao dịch</h3>
                 <p className="text-gray-400 text-sm mt-2">Bạn có chắc chắn muốn mua gói này?</p>
@@ -134,7 +184,7 @@ const PaymentView = () => {
               <div className="bg-black/50 rounded-xl p-4 mb-6 border border-white/5">
                 <div className="flex justify-between items-center mb-2">
                    <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">Gói nạp</span>
-                   <span className="text-white font-bold">{formatNumber(selectedPackage.gold + selectedPackage.bonus)} Vàng</span>
+                   <span className="flex items-center gap-2 text-white font-bold">{formatNumber(selectedPackage.gold + selectedPackage.bonus)} <Coins size={16} className="text-yellow-500" /></span>
                 </div>
                 <div className="flex justify-between items-center text-lg">
                    <span className="text-gray-500 text-xs font-bold uppercase tracking-widest">Thanh toán</span>
@@ -167,12 +217,16 @@ const PaymentView = () => {
              <div className="bg-white p-6 rounded-3xl shadow-2xl flex flex-col items-center">
                 <div className="text-black font-black text-xl uppercase tracking-tighter mb-4 text-center">Quét mã để thanh toán</div>
                 <div className="aspect-square w-full max-w-[300px] bg-neutral-100 rounded-xl mb-4 relative overflow-hidden flex items-center justify-center">
-                   {/* Placeholder QR - replace with real API in production */}
+                   {/* QR Code with user-specific data */}
+                   {/* Format for VietQR often looks like: https://img.vietqr.io/image/<BANK_ID>-<ACCOUNT_NO>-<TEMPLATE>.png?amount=<AMOUNT>&addInfo=<CONTENT> */}
+                   {/* Using VietQR API for better utility if possible, otherwise generic QR */}
+                   
                    <img 
-                     src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=2|99|${selectedPackage.price}|MMA-${selectedPackage.id}`} 
+                     src={`https://img.vietqr.io/image/MB-0333053420-compact.png?amount=${selectedPackage.price}&addInfo=${encodeURIComponent(transferContent)}`}
                      alt="Payment QR" 
                      className="w-full h-full object-contain mix-blend-multiply"
                    />
+                   
                    <div className="absolute inset-0 border-4 border-yellow-500/0"></div>
                 </div>
                 <div className="flex items-center gap-2 text-neutral-500 text-xs font-bold uppercase tracking-widest">
@@ -191,10 +245,10 @@ const PaymentView = () => {
 
                    <div className="space-y-4">
                       <InfoRow label="Ngân hàng" value="MB Bank (Quân Đội)" copyable={false} />
-                      <InfoRow label="Số tài khoản" value="0987654321" copyable={true} />
-                      <InfoRow label="Chủ tài khoản" value="NGUYEN VAN ADMIN" copyable={false} />
+                      <InfoRow label="Số tài khoản" value="0333053420" copyable={true} />
+                      <InfoRow label="Chủ tài khoản" value="NGUYEN HONG DUC" copyable={false} />
                       <InfoRow label="Số tiền" value={`${selectedPackage.price} VND`} copyable={true} highlight />
-                      <InfoRow label="Nội dung CK" value={`MMA ${selectedPackage.id} USER123`} copyable={true} highlight />
+                      <InfoRow label="Nội dung chuyển khoản" value={transferContent} copyable={true} highlight  />
                    </div>
                 </div>
 
@@ -203,7 +257,7 @@ const PaymentView = () => {
                 </div>
 
                 <button 
-                  onClick={handleBack}
+                  onClick={handlePaymentSuccess}
                   className="w-full py-4 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 text-white font-black uppercase tracking-widest shadow-lg transition-all active:scale-[0.98]"
                 >
                    Đã chuyển khoản thành công
@@ -227,7 +281,7 @@ const InfoRow = ({ label, value, copyable, highlight }: { label: string, value: 
 
   return (
     <div className={`p-4 rounded-xl border ${highlight ? 'bg-white/5 border-yellow-500/50' : 'bg-black/20 border-white/5'} flex justify-between items-center group`}>
-       <div className="flex flex-col">
+       <div className="flex flex-col uppercase">
           <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">{label}</span>
           <span className={`font-bold font-mono ${highlight ? 'text-yellow-400 text-lg' : 'text-white'}`}>{value}</span>
        </div>

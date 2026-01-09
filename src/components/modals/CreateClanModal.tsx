@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   X, Shield, ChevronRight, Check, Zap,
   Coins
@@ -15,9 +16,11 @@ interface CreateClanModalProps {
     icon: string; 
     color: string 
   }) => void;
+  currentBalance: number;
 }
 
-const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSubmit }) => {
+const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSubmit, currentBalance }) => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
     tag: '',
@@ -29,18 +32,26 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
   const [selectorView, setSelectorView] = useState<'none' | 'icons' | 'colors'>('none');
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showInsufficientBalance, setShowInsufficientBalance] = useState(false);
+
+  // Reset form when opening
+  React.useEffect(() => {
+    if (isOpen) {
+       setFormData({
+        name: '',
+        tag: '',
+        description: '',
+        icon: 'Shield',
+        color: 'blue',
+      });
+      setErrors({});
+      setSelectorView('none');
+      setShowConfirm(false);
+      setShowInsufficientBalance(false);
+    }
+  }, [isOpen]);
 
   const handleClose = () => {
-    setFormData({
-      name: '',
-      tag: '',
-      description: '',
-      icon: 'Shield',
-      color: 'blue',
-    });
-    setErrors({});
-    setSelectorView('none');
-    setShowConfirm(false);
     onClose();
   };
 
@@ -60,12 +71,20 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
     }
 
     setErrors({});
-    setShowConfirm(true);
+    
+    // Check Balance
+    if (currentBalance < 1000) {
+        setShowInsufficientBalance(true);
+    } else {
+        setShowConfirm(true);
+    }
   };
 
   const handleFinalSubmit = () => {
     onSubmit(formData);
-    handleClose();
+    // Do NOT close here. Let parent close on success.
+    // However, if we want to give immediate feedback that it's processing, we might just leave it open.
+    // The previous plan said "Remove handleClose() call".
   };
 
   const selectedIconObj = CLAN_ICONS.find((i: any) => i.id === formData.icon) || CLAN_ICONS[0];
@@ -296,6 +315,38 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                      className="w-full py-4 rounded-2xl bg-white/5 border border-white/5 text-gray-400 font-bold uppercase tracking-widest hover:text-white transition-all"
                    >
                      Kiểm tra lại
+                   </button>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Insufficient Balance Overlay */}
+        {showInsufficientBalance && (
+          <div className="absolute inset-0 bg-black/95 z-[2000] flex items-center justify-center p-8 animate-in fade-in duration-300">
+             <div className="max-w-md w-full text-center space-y-10">
+                <div className="space-y-4">
+                   <div className={`w-24 h-24 rounded-[2rem] bg-gradient-to-br from-red-500 to-red-600 mx-auto flex items-center justify-center shadow-[0_0_50px_rgba(239,68,68,0.4)]`}>
+                      <Coins size={48} className="text-white" />
+                   </div>
+                   <div className="space-y-1">
+                     <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Vàng không đủ</h3>
+                     <p className="text-gray-400 text-sm font-bold px-4">Bạn cần <span className="text-yellow-500">1,000 🪙</span> để thành lập Clan. Số dư hiện tại không đủ.</p>
+                   </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                   <button 
+                     onClick={() => navigate('/dashboard/payment')}
+                     className={`w-full py-5 rounded-2xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-black uppercase tracking-widest shadow-2xl hover:scale-[1.02] active:scale-95 transition-all`}
+                   >
+                     Nạp thêm vàng
+                   </button>
+                   <button 
+                     onClick={() => setShowInsufficientBalance(false)}
+                     className="w-full py-4 rounded-2xl bg-white/5 border border-white/5 text-gray-400 font-bold uppercase tracking-widest hover:text-white transition-all"
+                   >
+                     Hủy
                    </button>
                 </div>
              </div>

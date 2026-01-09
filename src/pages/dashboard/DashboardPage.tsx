@@ -17,6 +17,7 @@ import {
   Coins,
   Plus,
 } from "lucide-react";
+import Toast, { type ToastType } from "../../components/Toast";
 
 interface PlayerResult {
   id: string;
@@ -29,8 +30,9 @@ interface PlayerResult {
 const DashboardPage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<import('@supabase/supabase-js').User | null>(null); // From Supabase Auth
-  const [profile, setProfile] = useState<{ id: string; display_name: string | null; avatar_url: string | null; mmr: number | null } | null>(null); // From profiles table
+  const [profile, setProfile] = useState<{ id: string; display_name: string | null; avatar_url: string | null; mmr: number | null; balance?: number } | null>(null); // From profiles table
   const [dashboardCache, setDashboardCache] = useState<Record<string, any>>({});
+  const [toast, setToast] = useState<{ message: React.ReactNode; type: ToastType; visible: boolean }>({ message: "", type: "success", visible: false });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PlayerResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -129,6 +131,9 @@ const DashboardPage = () => {
     navigate("/login");
   };
 
+  const showToast = (message: React.ReactNode, type: ToastType = 'success') => {
+    setToast({ message, type, visible: true });
+  };
 
   const rankInfo = getRankFromMMR(profile?.mmr ?? 0);
 
@@ -356,24 +361,30 @@ const DashboardPage = () => {
           </div>
 
           <div className="flex items-center gap-8">
-            <button className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl transition-all group active:scale-95">
+            <div className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl transition-all group">
               <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 transition-all">
                 <Coins size={16} className="text-yellow-500" />
               </div>
-              <span className="font-black text-xs text-white tabular-nums">0</span>
+              <span className="font-black text-xs text-white tabular-nums">{profile?.balance?.toLocaleString() || 0}</span>
               <Link to="/dashboard/payment" className="w-6 h-6 rounded-full bg-fuchsia-500 ml-4 hover:bg-fuchsia-400 flex items-center justify-center transition-all shadow-[0_0_15px_rgba(217,70,239,0.3)] hover:shadow-[0_0_25px_rgba(217,70,239,0.5)] active:scale-95 text-black">
-              <Plus size={12} strokeWidth={4} />
-            </Link>
-            </button>
-            
-           
+                <Plus size={12} strokeWidth={4} />
+              </Link>
+            </div>
           </div>
         </header>
 
         {/* Dynamic Route Content */}
         <div className="flex-1 p-8">
-          <Outlet context={{ user, profile, dashboardCache, setDashboardCache }} />
+          <Outlet context={{ user, profile, setProfile, dashboardCache, setDashboardCache, showToast }} />
         </div>
+        
+        {toast.visible && (
+          <Toast 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => setToast(prev => ({ ...prev, visible: false }))} 
+          />
+        )}
       </main>
     </div>
   );

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
-  X, Shield, ChevronRight, Check, Zap
+  X, Shield, ChevronRight, Check, Zap,
+  Edit, Coins 
 } from 'lucide-react';
 import { CLAN_ICONS, CLAN_COLORS } from '../../pages/dashboard/clanConstants';
 
@@ -21,9 +23,11 @@ interface UpdateClanModalProps {
     icon: string;
     color: string;
   };
+  currentBalance: number;
 }
 
-const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSubmit, initialData }) => {
+const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSubmit, initialData, currentBalance }) => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: initialData.name || '',
     tag: initialData.tag || '',
@@ -35,11 +39,13 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
   const [selectorView, setSelectorView] = useState<'none' | 'icons' | 'colors'>('none');
   const [errors, setErrors] = useState<Record<string, boolean>>({});
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showInsufficientBalance, setShowInsufficientBalance] = useState(false);
 
   const handleClose = () => {
     setErrors({});
     setSelectorView('none');
     setShowConfirm(false);
+    setShowInsufficientBalance(false);
     onClose();
   };
 
@@ -59,12 +65,18 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
     }
 
     setErrors({});
-    setShowConfirm(true);
+    
+    // Check balance logic
+    if (currentBalance < 500) {
+       setShowInsufficientBalance(true);
+    } else {
+       setShowConfirm(true);
+    }
   };
 
   const handleFinalSubmit = () => {
     onSubmit(formData);
-    handleClose();
+    // Don't auto close, wait for parent
   };
 
   const selectedIconObj = CLAN_ICONS.find((i: { id: string }) => i.id === formData.icon) || CLAN_ICONS[0];
@@ -247,11 +259,11 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
               <div className="space-y-8 ">
                 <div className="flex items-center justify-center gap-4">
                    <div className="w-14 h-14 rounded-2xl bg-yellow-500/5 flex items-center justify-center border border-yellow-500/20 shadow-inner">
-                      <Zap size={24} className="text-yellow-500" fill="currentColor" />
+                      <Edit size={24} className="text-yellow-500" />
                    </div>
                    <div>
                       <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Phí thay đổi</div>
-                      <div className="text-xl font-black text-white">200 🪙</div>
+                      <div className="text-xl font-black text-white">500 🪙</div>
                    </div>
                 </div>
 
@@ -259,7 +271,7 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
                    <button 
                      type="button"
                      onClick={handleClose}
-                     className="px-10 py-4 font-black text-gray-400 hover:text-white transition-all text-[11px] uppercase tracking-[0.2em] whitespace-nowrap"
+                     className="px-10 py-4 font-black text-gray-400 hover:text-white transition-all text-sm uppercase tracking-[0.2em] whitespace-nowrap"
                    >
                      Hủy
                    </button>
@@ -287,7 +299,7 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div className="space-y-1">
                      <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Xác nhận Thay đổi?</h3>
-                     <p className="text-gray-400 text-sm font-bold px-4">Hành động này sẽ tiêu tốn <span className="text-yellow-500">200 🪙</span>. Bạn có chắc chắn muốn cập nhật thông tin Clan?</p>
+                     <p className="text-gray-400 text-sm font-bold px-4">Hành động này sẽ tiêu tốn <span className="text-yellow-500">500 🪙</span>. Bạn có chắc chắn muốn cập nhật thông tin Clan?</p>
                    </div>
                 </div>
 
@@ -296,13 +308,45 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
                      onClick={handleFinalSubmit}
                      className={`w-full py-5 rounded-2xl bg-gradient-to-r ${selectedColorObj.classes} text-white font-black uppercase tracking-widest shadow-2xl hover:scale-[1.02] active:scale-95 transition-all`}
                    >
-                     Xác nhận (200 🪙)
+                     Xác nhận (500 🪙)
                    </button>
                    <button 
                      onClick={() => setShowConfirm(false)}
                      className="w-full py-4 rounded-2xl bg-white/5 border border-white/5 text-gray-400 font-bold uppercase tracking-widest hover:text-white transition-all"
                    >
                      Kiểm tra lại
+                   </button>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {/* Insufficient Balance Overlay */}
+        {showInsufficientBalance && (
+          <div className="absolute inset-0 bg-black/95 z-[2000] flex items-center justify-center p-8 animate-in fade-in duration-300">
+             <div className="max-w-md w-full text-center space-y-10">
+                <div className="space-y-4">
+                   <div className={`w-24 h-24 rounded-[2rem] bg-gradient-to-br from-red-500 to-red-600 mx-auto flex items-center justify-center shadow-[0_0_50px_rgba(239,68,68,0.4)]`}>
+                      <Coins size={48} className="text-white" />
+                   </div>
+                   <div className="space-y-1">
+                     <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Vàng không đủ</h3>
+                     <p className="text-gray-400 text-sm font-bold px-4">Bạn cần <span className="text-yellow-500">500 🪙</span> để cập nhật Clan. Số dư hiện tại không đủ.</p>
+                   </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                   <button 
+                     onClick={() => navigate('/dashboard/payment')}
+                     className={`w-full py-5 rounded-2xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white font-black uppercase tracking-widest shadow-2xl hover:scale-[1.02] active:scale-95 transition-all`}
+                   >
+                     Nạp thêm vàng
+                   </button>
+                   <button 
+                     onClick={() => setShowInsufficientBalance(false)}
+                     className="w-full py-4 rounded-2xl bg-white/5 border border-white/5 text-gray-400 font-bold uppercase tracking-widest hover:text-white transition-all"
+                   >
+                     Hủy
                    </button>
                 </div>
              </div>
