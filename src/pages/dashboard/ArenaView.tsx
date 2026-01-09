@@ -465,7 +465,7 @@ const ArenaView = () => {
                 </span>
                 
                 <div className="flex items-center gap-3">
-                    <div className="flex bg-neutral-900 border border-white/10 rounded-xl overflow-hidden focus-within:border-fuchsia-500/50 transition-colors h-10">
+                    <div className="flex bg-neutral-900 border border-white/10 overflow-hidden focus-within:border-fuchsia-500/50 transition-colors h-10">
                        <input 
                           type="text" 
                           placeholder="Mã phòng..." 
@@ -493,7 +493,7 @@ const ArenaView = () => {
              </div>
 
           
-          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-sm">
+          <div className="bg-neutral-900/50 border border-white/5 rounded-b-xl overflow-hidden backdrop-blur-sm">
             {/* Table Header */}
 
             <div className="grid grid-cols-12 gap-4 p-4 border-b border-white/5 text-xs font-bold text-gray-500 uppercase tracking-wider">
@@ -531,7 +531,7 @@ const ArenaView = () => {
 
         {/* Sidebar: Ranking / History */}
         <div className="space-y-6">
-          <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-b-lg p-6 relative overflow-hidden">
+          <div className="bg-gradient-to-br from-fuchsia-900/20 to-purple-900/20 border border-fuchsia-500/20 rounded-b-xl p-6 relative overflow-hidden">
              <div className="absolute top-0 right-0 p-4 opacity-10">
                <Bookmark size={100} />
              </div>

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, type ElementType } from "react";
-import { useNavigate, NavLink, Outlet, Link } from "react-router-dom";
+import { useNavigate, NavLink, Outlet, Link, useLocation } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getRankFromMMR } from "../../lib/ranking";
 import {
@@ -14,8 +14,8 @@ import {
   Loader2,
   Shield,
   User,
-  Gamepad2,
   Coins,
+  Plus,
 } from "lucide-react";
 
 interface PlayerResult {
@@ -38,6 +38,15 @@ const DashboardPage = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const mainContentRef = useRef<HTMLElement>(null);
+  const location = useLocation();
+
+  // Scroll to top on route change
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     const getData = async () => {
@@ -220,7 +229,7 @@ const DashboardPage = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col bg-black relative custom-scrollbar overflow-y-auto">
+      <main className="flex-1 flex flex-col bg-black relative custom-scrollbar overflow-y-auto" ref={mainContentRef}>
         {/* Header / Top Bar */}
         <header className="h-20 border-b border-white/5 flex items-center justify-between px-8 sticky top-0 bg-black/80 backdrop-blur-md z-40">
           <div className="flex-1 max-w-xl relative" ref={searchRef}>
@@ -346,13 +355,18 @@ const DashboardPage = () => {
             </Link>
           </div>
 
-          <div className="flex items-center gap-4">
-            <button className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl hover:border-yellow-500/50 transition-all group active:scale-95">
-              <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 group-hover:bg-yellow-500 transition-all">
-                <Coins size={16} className="text-yellow-500 group-hover:text-black transition-colors" />
+          <div className="flex items-center gap-8">
+            <button className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl transition-all group active:scale-95">
+              <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 transition-all">
+                <Coins size={16} className="text-yellow-500" />
               </div>
               <span className="font-black text-xs text-white tabular-nums">0</span>
+              <Link to="/dashboard/payment" className="w-6 h-6 rounded-full bg-fuchsia-500 ml-4 hover:bg-fuchsia-400 flex items-center justify-center transition-all shadow-[0_0_15px_rgba(217,70,239,0.3)] hover:shadow-[0_0_25px_rgba(217,70,239,0.5)] active:scale-95 text-black">
+              <Plus size={12} strokeWidth={4} />
+            </Link>
             </button>
+            
+           
           </div>
         </header>
 

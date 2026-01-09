@@ -17,6 +17,7 @@ interface ProfileData {
   rank_score?: number;
   tier?: string;
   rank_color?: string;
+  rank?: number;
 }
 
 interface DashboardContext {
@@ -44,10 +45,11 @@ const RankingView = () => {
         if (error) throw error;
 
         // Process data with getRankFromMMR
-        const enrichedData = (data || []).map((user) => {
+        const enrichedData = (data || []).map((user, index) => {
           const rankInfo = getRankFromMMR(user.mmr);
           return {
             ...user,
+            rank: index + 1,
             rank_score: user.mmr ?? 0,
             tier: rankInfo.tier === 'Unranked' ? 'Chưa hạng' : `${rankInfo.tier} ${rankInfo.division}`,
             rank_color: rankInfo.color
@@ -112,6 +114,7 @@ const RankingView = () => {
       </div>
 
       {/* Top 3 Podium */}
+      {!searchTerm && (
       <div className="mb-12 grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
         {/* Number 2 */}
         {filteredLeaderboard[1] && (
@@ -165,6 +168,7 @@ const RankingView = () => {
           </div>
         )}
       </div>
+      )}
 
       <div className="relative bg-neutral-950 border border-white/5 overflow-hidden">
         <div className="absolute inset-0 bg-dot-pattern opacity-5"></div>
@@ -178,10 +182,10 @@ const RankingView = () => {
         </div>
         
         <div className="divide-y divide-white/5 relative">
-          {filteredLeaderboard.map((user, index) => (
+          {filteredLeaderboard.map((user) => (
             <LeaderboardRow 
               key={user.id} 
-              rank={index + 1} 
+              rank={user.rank || 0} 
               name={user.display_name} 
               mmr={user.mmr} 
               userId={user.id}
