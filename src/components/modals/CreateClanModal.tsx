@@ -299,7 +299,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div className="space-y-1">
                      <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Xác nhận Thành lập?</h3>
-                     <p className="text-gray-400 text-sm font-bold px-4">Bạn đồng ý chi phí <span className="text-yellow-500">1,000 🪙</span> để thành lập <span className="text-blue-400">{formData.name}</span> chứ?</p>
+                     <p className="text-gray-400 text-sm font-bold px-4">Bạn đồng ý chi phí <span className="text-yellow-500 flex items-center justify-center gap-1">1,000 <Coins size={16} className="text-yellow-500"/></span> để thành lập <span className="text-blue-400">{formData.name}</span> chứ?</p>
                    </div>
                 </div>
 
@@ -331,7 +331,7 @@ const CreateClanModal: React.FC<CreateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div className="space-y-1">
                      <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Vàng không đủ</h3>
-                     <p className="text-gray-400 text-sm font-bold px-4">Bạn cần <span className="text-yellow-500">1,000 🪙</span> để thành lập Clan. Số dư hiện tại không đủ.</p>
+                     <p className="text-gray-400 text-sm font-bold px-4">Bạn cần <span className="text-yellow-500 flex items-center justify-center gap-1">1,000 <Coins size={16} className="text-yellow-500"/></span> để thành lập Clan. Số dư hiện tại không đủ.</p>
                    </div>
                 </div>
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Trophy, Calendar, Users, Filter, Search, ArrowRight } from 'lucide-react';
+import { useOutletContext, useNavigate } from 'react-router-dom';
+import { Trophy, Calendar, Users, Filter, Search, ArrowRight, Coins } from 'lucide-react';
 import { TournamentsPageSkeleton } from '../../components/LoadingSkeletons';
 
 // Define the type for the dashboard cache
@@ -17,6 +17,7 @@ interface DashboardContext {
 
 const TournamentsView = () => {
   const { dashboardCache, setDashboardCache } = useOutletContext<DashboardContext>();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(!dashboardCache.tournamentsLoaded);
   
@@ -181,6 +182,7 @@ const TournamentsView = () => {
           status="Đang diễn ra"
           type="SOLO 5v5"
           entryFee="miễn phí"
+          onClick={() => navigate('community-weekly-cup-42')}
         />
       </div>
 
@@ -199,9 +201,10 @@ interface TournamentCardProps {
   type: string;
   entryFee: string;
   image: string;
+  onClick?: () => void;
 }
 
-const TournamentCard = ({ title, status, prize, participants, date, type, entryFee, image }: TournamentCardProps) => {
+const TournamentCard = ({ title, status, prize, participants, date, type, entryFee, image, onClick }: TournamentCardProps) => {
   const statusConfig: Record<string, { label: string; glow: string; text: string }> = {
     'Sắp diễn ra': { label: 'Sắp diễn ra', glow: 'shadow-[0_0_10px_rgba(59,130,246,0.3)]', text: 'text-blue-400' },
     'Đang diễn ra': { label: 'Đang diễn ra', glow: 'shadow-[0_0_10px_rgba(34,197,94,0.3)]', text: 'text-green-400' },
@@ -211,7 +214,10 @@ const TournamentCard = ({ title, status, prize, participants, date, type, entryF
   const config = statusConfig[status as keyof typeof statusConfig] || statusConfig['Sắp diễn ra'];
 
   return (
-    <div className="group relative bg-neutral-950 border border-white/10 hover:border-fuchsia-500/50 transition-all overflow-hidden flex flex-col h-full shadow-2xl">
+    <div 
+      onClick={onClick}
+      className="group relative bg-neutral-950 border border-white/10 hover:border-fuchsia-500/50 transition-all overflow-hidden flex flex-col h-full shadow-2xl cursor-pointer"
+    >
       {/* Visual Accents */}
       <div className="absolute inset-0 bg-dot-pattern opacity-5" />
       <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -249,8 +255,8 @@ const TournamentCard = ({ title, status, prize, participants, date, type, entryF
 
         <div className="grid grid-cols-2 gap-4 mb-8">
            <div className="p-3 bg-black border border-white/5 relative overflow-hidden group-hover:border-fuchsia-500/20 transition-colors">
-              <div className="text-[8px] font-black text-gray-600 uppercase tracking-widest mb-1 italic">Giải thưởng</div>
-              <div className="text-sm font-black text-fuchsia-500 tabular-nums italic">{prize} <span className="text-[10px] opacity-40">🪙</span></div>
+              <div className="text-[8px] font-black text-gray-600 uppercase tracking-widest mb-1 italic">Tổng giải thưởng</div>
+              <div className="flex items-center gap-1 text-sm font-black text-fuchsia-500 tabular-nums italic">{prize} <span className="text-[10px] opacity-40"><Coins size={16} className="text-yellow-500"/></span></div>
            </div>
            <div className="p-3 bg-black border border-white/5 relative overflow-hidden group-hover:border-fuchsia-500/20 transition-colors">
               <div className="text-[8px] font-black text-gray-600 uppercase tracking-widest mb-1 italic">Số lượng clan</div>

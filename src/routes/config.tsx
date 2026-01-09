@@ -8,6 +8,7 @@ import ArenaView from "../pages/dashboard/ArenaView"
 import ArenaLobbyView from "../pages/dashboard/ArenaLobbyView"
 import GamePlayView from "../pages/dashboard/GamePlayView"
 import TournamentsView from "../pages/dashboard/TournamentsView"
+import TournamentDetailView from "../pages/dashboard/TournamentDetailView"
 import ClanView from "../pages/dashboard/ClanView"
 import Home from "../pages/home/HomePage"
 import RankingView from "../pages/dashboard/RankingView"
@@ -70,6 +71,10 @@ export const routes = [
       {
         path: "tournaments", 
         element: TournamentsView,
+      },
+      {
+        path: "tournaments/:id",
+        element: TournamentDetailView,
       },
       {
         path: "clan", 

@@ -13,7 +13,8 @@ import {
   Search,
   AlertTriangle,
   MailCheck,
-  MailX
+  MailX,
+  Coins
 } from 'lucide-react';
 import CreateClanModal from '../../components/modals/CreateClanModal';
 import UpdateClanModal from '../../components/modals/UpdateClanModal';
@@ -81,7 +82,7 @@ const ClanView = () => {
   const [joinRequests, setJoinRequests] = useState<MemberInfo[]>(dashboardCache.joinRequests || []);
   const [userClanStatus, setUserClanStatus] = useState<{ [clanId: string]: 'pending' | 'member' }>(dashboardCache.userClanStatus || {});
   const [recommendedClans, setRecommendedClans] = useState<ClanInfo[]>(dashboardCache.recommendedClans || []);
-  const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null);
+  const [toast, setToast] = useState<{ message: React.ReactNode, type: ToastType } | null>(null);
 
   // Ref to track user's primary clan membership for joined/kicked notifications
   const prevClanIdRef = React.useRef<string | null>(null);
@@ -92,7 +93,7 @@ const ClanView = () => {
   const [viewingMembers, setViewingMembers] = useState<MemberInfo[]>([]);
   const [viewingLoading, setViewingLoading] = useState(false);
 
-  const handleShowToast = (message: string, type: ToastType = 'success') => {
+  const handleShowToast = (message: React.ReactNode, type: ToastType = 'success') => {
     setToast({ message, type });
   };
 
@@ -332,7 +333,7 @@ const ClanView = () => {
 
       await fetchClanData();
       setShowCreateModal(false);
-      handleShowToast('Tạo Clan thành công! (Đã trừ 1000 🪙)', 'success');
+      handleShowToast(<span className="flex items-center gap-1">Tạo Clan thành công! (Đã trừ 1000 <Coins size={14} className="text-yellow-500"/>)</span>, 'success');
       // Update local balance if we have access to it, or rely on realtime/refetch
       if (result.new_balance !== undefined) {
          setProfile(prev => prev ? ({ ...prev, balance: result.new_balance }) : prev);
@@ -366,7 +367,7 @@ const ClanView = () => {
       // Success
       await fetchClanData(false);
       setShowUpdateModal(false);
-      handleShowToast('Cập nhật Clan thành công! (Đã trừ 500 🪙)', 'success');
+      handleShowToast(<span className="flex items-center gap-1">Cập nhật Clan thành công! (Đã trừ 500 <Coins size={14} className="text-yellow-500"/>)</span>, 'success');
       
       if (result.new_balance !== undefined) {
          setProfile(prev => prev ? ({ ...prev, balance: result.new_balance }) : prev);
@@ -391,10 +392,10 @@ const ClanView = () => {
 
       // Specific check for the likely insufficient funds case from the PL/pgSQL function
       if (errorMessage.includes('Insufficient funds') || (err?.details && err.details.includes('Insufficient funds'))) {
-         errorMessage = 'Số dư không đủ để cập nhật (Cần 500 🪙).';
+         handleShowToast(<span className="flex items-center gap-1">Số dư không đủ để cập nhật (Cần 500 <Coins size={14} className="text-yellow-500"/>).</span>, 'error');
+      } else {
+         handleShowToast(errorMessage, 'error');
       }
-
-      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -859,7 +860,7 @@ const MyClanSection = ({
 
             {hasClan && (
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-10">
-                 <StatBadge icon={Users} label="Thành viên" value={`${members.length}/50`} />
+                 <StatBadge icon={Users} label="Thành viên" value={`${members.length}/5`} />
                  <StatBadge icon={Trophy} label="Xếp hạng" value="TIỀN VỆ" color="text-fuchsia-400" />
                  <StatBadge icon={Target} label="Tỷ lệ thắng" value="-- %" color="text-blue-400" />
               </div>
@@ -1296,7 +1297,7 @@ const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan, userClan
            
            <div className="text-right">
               <div className="text-[9px] font-black text-gray-600 uppercase tracking-[0.2em] mb-1">Thành viên</div>
-              <div className="text-2xl font-black text-white tabular-nums tracking-tighter italic">{clan.member_count}<span className="text-gray-700 font-normal mx-0.5">/</span>50</div>
+              <div className="text-2xl font-black text-white tabular-nums tracking-tighter italic">{clan.member_count}<span className="text-gray-700 font-normal mx-0.5">/</span>5  </div>
            </div>
         </div>
 

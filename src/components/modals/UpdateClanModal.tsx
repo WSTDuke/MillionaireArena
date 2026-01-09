@@ -263,7 +263,7 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div>
                       <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Phí thay đổi</div>
-                      <div className="text-xl font-black text-white">500 🪙</div>
+                      <div className="text-xl font-black text-white flex items-center gap-1"><Coins size={20} className="text-yellow-500" />500</div>
                    </div>
                 </div>
 
@@ -299,16 +299,23 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div className="space-y-1">
                      <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Xác nhận Thay đổi?</h3>
-                     <p className="text-gray-400 text-sm font-bold px-4">Hành động này sẽ tiêu tốn <span className="text-yellow-500">500 🪙</span>. Bạn có chắc chắn muốn cập nhật thông tin Clan?</p>
+                    <div className="flex items-center gap-2 justify-center text-gray-400 text-sm font-bold px-4">
+                       <p>Hành động này sẽ tiêu tốn</p>
+                     <p className="flex items-center gap-2"><Coins size={20} className="text-yellow-500" />500.</p>
+                    </div>
+                     <p className="text-gray-400 text-sm font-bold px-4">Bạn có chắc chắn muốn cập nhật thông tin Clan?</p>
                    </div>
                 </div>
 
                 <div className="flex flex-col gap-3">
                    <button 
                      onClick={handleFinalSubmit}
-                     className={`w-full py-5 rounded-2xl bg-gradient-to-r ${selectedColorObj.classes} text-white font-black uppercase tracking-widest shadow-2xl hover:scale-[1.02] active:scale-95 transition-all`}
+                     className={`flex items-center justify-center gap-2 w-full py-5 rounded-2xl bg-gradient-to-r ${selectedColorObj.classes} text-white font-black uppercase tracking-widest shadow-2xl hover:scale-[1.02] active:scale-95 transition-all`}
                    >
-                     Xác nhận (500 🪙)
+                     <span>
+                       Xác nhận 
+                     </span>
+                     <Coins size={20} className="text-yellow-500" />500
                    </button>
                    <button 
                      onClick={() => setShowConfirm(false)}
@@ -331,7 +338,7 @@ const UpdateClanModal: React.FC<UpdateClanModalProps> = ({ isOpen, onClose, onSu
                    </div>
                    <div className="space-y-1">
                      <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Vàng không đủ</h3>
-                     <p className="text-gray-400 text-sm font-bold px-4">Bạn cần <span className="text-yellow-500">500 🪙</span> để cập nhật Clan. Số dư hiện tại không đủ.</p>
+                     <p className="text-gray-400 text-sm font-bold px-4">Bạn cần <span className="text-yellow-500"><Coins size={20} className="text-yellow-500" />500</span> để cập nhật Clan. Số dư hiện tại không đủ.</p>
                    </div>
                 </div>
 
