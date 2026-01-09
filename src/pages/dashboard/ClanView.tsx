@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useOutletContext, useNavigate } from 'react-router-dom';
+import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
   Trophy, Target, 
@@ -13,8 +13,9 @@ import {
   Search,
   AlertTriangle,
   MailCheck,
-  MailX,
-  Coins
+  Coins,
+  BookUser,
+  Eye
 } from 'lucide-react';
 import CreateClanModal from '../../components/modals/CreateClanModal';
 import UpdateClanModal from '../../components/modals/UpdateClanModal';
@@ -22,7 +23,6 @@ import Toast from '../../components/Toast';
 import type { ToastType } from '../../components/Toast';
 import { ClanPageSkeleton } from '../../components/LoadingSkeletons';
 import { CLAN_ICONS, CLAN_COLORS } from './clanConstants';
-import { getRankFromMMR } from '../../lib/ranking';
 
 interface ClanInfo {
   id: string;
@@ -68,6 +68,7 @@ interface DashboardContext {
 
 const ClanView = () => {
   const { user, profile, setProfile, dashboardCache, setDashboardCache } = useOutletContext<DashboardContext>();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState('find-clan');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -258,7 +259,7 @@ const ClanView = () => {
   }, [user?.id, fetchMembers, setDashboardCache]);
 
 
-  const handleViewClanDetails = async (clanId: string) => {
+  const handleViewClanDetails = useCallback(async (clanId: string) => {
     setViewingLoading(true);
     try {
       const { data: clanDetails, error: clanError } = await supabase
@@ -284,12 +285,29 @@ const ClanView = () => {
     } finally {
       setViewingLoading(false);
     }
-  };
+  }, [fetchMembers]);
+
 
   const handleBackToList = () => {
     setViewingClan(null);
     setViewingMembers([]);
+    setSearchParams({}); // Clear query params on back
   };
+
+
+  // Handle URL query for deep linking to a clan
+  useEffect(() => {
+    const clanId = searchParams.get('id');
+    // Ensure we only trigger if we have an ID, and we aren't already viewing that clan
+    if (clanId && (!viewingClan || viewingClan.id !== clanId)) {
+        handleViewClanDetails(clanId);
+    } else if (!clanId && viewingClan) {
+        // Optional: Close viewing if ID is removed. 
+        // For consistent state with URL, we should probably close it.
+        // setViewingClan(null); // Uncommenting this might be safer for browser back button
+    }
+  }, [searchParams, handleViewClanDetails, viewingClan]); 
+
 
   useEffect(() => {
     fetchClanData();
@@ -779,6 +797,8 @@ setShowPromoteConfirm(true);
 
 // --- Sections ---
 
+
+
 const MyClanSection = ({ 
   clanInfo, 
   members,
@@ -801,631 +821,500 @@ const MyClanSection = ({
   onLeaveRequest: () => void;
   onKick: (member: MemberInfo) => void;
   onPromote: (member: MemberInfo) => void;
-  onAcceptRequest: (request: MemberInfo) => void;
-  onRejectRequest: (request: MemberInfo) => void;
+  onAcceptRequest: (member: MemberInfo) => void;
+  onRejectRequest: (member: MemberInfo) => void;
   onSettingsClick?: () => void;
   isViewingOnly?: boolean;
 }) => {
-  const hasClan = !!clanInfo; 
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [membersTab, setMembersTab] = useState('members');
-  const isLeader = clanInfo?.role === 'leader';
+  const navigate = useNavigate();
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  const selectedIconObj = CLAN_ICONS.find(i => i.id === clanInfo?.icon) || CLAN_ICONS[0];
-  const selectedColorObj = CLAN_COLORS.find(c => c.id === clanInfo?.color) || CLAN_COLORS[0];
-  const ClanIcon = hasClan ? selectedIconObj.icon : Shield;
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  if (!clanInfo) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 bg-neutral-900/50 border border-white/5 rounded-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
+        <div className="w-20 h-20 bg-neutral-800 rounded-full flex items-center justify-center mb-2 animate-bounce">
+          <Shield size={40} className="text-gray-500" />
+        </div>
+        <div>
+          <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-2">Chưa tham gia Clan</h3>
+          <p className="text-gray-400 font-medium max-w-md mx-auto">
+            Gia nhập Clan để tham gia các giải đấu, nhận phần thưởng độc quyền và kết nối với đồng đội.
+          </p>
+        </div>
+        <button 
+          onClick={onCreateClan}
+          className="px-8 py-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black uppercase tracking-[0.2em] rounded-xl shadow-lg hover:shadow-fuchsia-500/25 transition-all active:scale-95 flex items-center gap-2"
+        >
+          <Plus size={18} />
+          Tạo Clan Mới
+        </button>
+      </div>
+    );
+  }
+  
+  const { icon: IconComponent } = CLAN_ICONS.find((item: any) => item.id === clanInfo.icon) || { icon: Shield };
+  const colorObj = CLAN_COLORS.find(c => c.id === clanInfo.color) || CLAN_COLORS[0];
+  const approvedMembers = members.filter(m => m.status === 'approved');
 
   return (
-    <div className="space-y-10">
-      {/* Hero / Banner - Tech Edition */}
-      <div className="relative group p-10 border border-white/5 bg-neutral-950 overflow-hidden">
-        {/* Background Layer */}
-        <div className="absolute inset-0 z-0">
-          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1550745165-9bc0b252723f?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-10 blur-sm group-hover:blur-none transition-all duration-1000"></div>
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent"></div>
-          <div className="absolute inset-0 bg-dot-pattern opacity-10"></div>
-        </div>
-
-        {/* HUD Elements */}
-        <div className="absolute top-4 left-4 w-4 h-4 border-t border-l border-fuchsia-500/40" />
-        <div className="absolute bottom-4 right-4 w-4 h-4 border-b border-r border-fuchsia-500/40" />
+    <div className="space-y-8">
+      {/* Clan Hero */}
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 group">
+        <div className={`absolute inset-0 bg-gradient-to-br ${colorObj.classes} opacity-10 group-hover:opacity-20 transition-opacity duration-700`} />
         
-        <div className="relative z-10 flex flex-col md:flex-row gap-10 items-center md:items-start">
-          {/* Logo Frame */}
-          <div className="relative">
-             <div className="absolute inset-0 bg-fuchsia-500 blur-2xl opacity-10 animate-pulse"></div>
-             <div className="w-40 h-40 bg-black border-2 border-fuchsia-500/30 flex items-center justify-center relative group-hover:border-fuchsia-500 transition-colors" style={{ clipPath: 'polygon(15% 0, 100% 0, 100% 85%, 85% 100%, 0 100%, 0 15%)' }}>
-                <ClanIcon size={80} className="text-white drop-shadow-[0_0_15px_rgba(217,70,239,0.4)]" style={{ color: hasClan ? selectedColorObj.hex : undefined }} />
-                {/* Internal Scanline */}
-                <div className="absolute inset-0 bg-gradient-to-b from-fuchsia-500/5 to-transparent h-1/2 animate-scanline-fast opacity-20 pointer-events-none" />
+        <div className="relative z-10 p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 text-center md:text-left">
+          <div className={`w-32 h-32 md:w-40 md:h-40 rounded-full ${colorObj.bg}/10 flex items-center justify-center border-2 border-white/20 shadow-[0_0_40px_rgba(0,0,0,0.3)] relative group-hover:scale-105 transition-transform duration-500`}>
+             <IconComponent size={64} className="text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" style={{ color: colorObj.hex }} />
+             
+             {/* Rank Badge (Mock) */}
+             <div className="absolute -bottom-2 -right-2 bg-neutral-900 border border-yellow-500/50 text-yellow-500 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1 shadow-lg">
+                <Crown size={12} />
+                Rank {Math.floor(clanInfo.members_count * 100 / 5)}
              </div>
           </div>
           
-          
-          <div className="flex-1 text-center md:text-left">
-            <div className="flex flex-col md:flex-row items-center md:items-end gap-3 mb-4">
-              <h2 className="text-4xl font-black text-white uppercase tracking-tighter italic">
-                {hasClan ? clanInfo?.name : "Chưa Gia Nhập CLAN"}
-              </h2>
-              <div className="px-3 py-1 bg-fuchsia-600 text-white font-black text-[10px] uppercase tracking-[0.2em] skew-x-[-12deg] shadow-[4px_4px_0_rgba(255,255,255,0.1)]">
-                {hasClan ? clanInfo?.tag : "UNASSIGNED"}
-              </div>
-            </div>
-            
-            <p className="text-gray-500 max-w-xl mb-10 font-bold text-sm leading-relaxed border-l-2 border-fuchsia-500/20 pl-4 italic">
-              {hasClan 
-                ? (clanInfo?.description || "Dữ liệu mô tả quân đoàn đang được cập nhật từ trung tâm chỉ huy.")
-                : "Hãy tìm kiếm hoặc tạo lập một liên minh quân sự mới để tối ưu hóa khả năng chiến đấu của bạn trong giải đấu Arena."}
-            </p>
-
-            {hasClan && (
-              <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-10">
-                 <StatBadge icon={Users} label="Thành viên" value={`${members.length}/5`} />
-                 <StatBadge icon={Trophy} label="Xếp hạng" value="TIỀN VỆ" color="text-fuchsia-400" />
-                 <StatBadge icon={Target} label="Tỷ lệ thắng" value="-- %" color="text-blue-400" />
-              </div>
-            )}
-
-            <div className="flex gap-4 justify-center md:justify-start">
-              {!hasClan && (
-                <>
-                  <button className="px-8 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black text-xs uppercase tracking-[0.2em] transition-all hover:translate-y-[-2px] shadow-[0_0_20px_rgba(192,38,211,0.3)]">
-                    Tìm Clan
-                  </button>
-                  <button 
-                    onClick={onCreateClan}
-                    className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white font-black text-xs uppercase tracking-[0.2em] transition-all border border-white/10"
-                  >
-                    Tạo Clan
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Action Dropdown Button (Banner context - Settings/Leave) */}
-          {hasClan && !isViewingOnly && (
-            <div className="absolute top-8 right-8">
-               <button 
-                 onClick={() => setShowDropdown(!showDropdown)}
-                 className="p-3 bg-black border border-fuchsia-500/30 text-fuchsia-500 hover:bg-fuchsia-500 hover:text-white transition-all shadow-[0_0_15px_rgba(192,38,211,0.2)]"
-                 style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
-               >
-                 <MoreVertical size={24} />
-               </button>
-
-               {showDropdown && (
-                 <>
-                   <div 
-                     className="fixed inset-0 z-[100]" 
-                     onClick={() => setShowDropdown(false)}
-                   />
-                   <div className="absolute right-0 mt-3 w-56 bg-neutral-900 border border-fuchsia-500/30 p-2 shadow-[0_0_30px_rgba(0,0,0,0.8)] z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-                      <button 
-                        onClick={() => { setShowDropdown(false); onSettingsClick?.(); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                          clanInfo?.role === 'leader'
-                            ? 'text-gray-400 hover:text-fuchsia-400 hover:bg-fuchsia-500/10'
-                            : 'text-gray-600 cursor-not-allowed'
-                        }`}
-                        disabled={clanInfo?.role !== 'leader'}
-                      >
-                         <Settings size={18} /> Cấu hình quân đoàn
-                      </button>
-                      <div className="h-px bg-white/5 my-1" />
-                      <button 
-                        onClick={() => { setShowDropdown(false); onLeaveRequest(); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                          clanInfo?.role === 'leader'
-                            ? 'text-red-500/20 cursor-not-allowed' 
-                            : 'text-red-500 hover:bg-red-500/10'
-                        }`}
-                        disabled={clanInfo?.role === 'leader'}
-                      >
-                        <LogOut size={18} /> Rời khỏi quân đoàn
-                      </button>
-                   </div>
-                 </>
-               )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {hasClan && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          {/* Member List - Tech Panel */}
-          <div className={`${isViewingOnly ? 'lg:col-span-3' : 'lg:col-span-2'} relative bg-neutral-950 p-8 border border-white/5`}>
-             {/* HUD Corners */}
-             <div className="absolute top-0 left-0 w-8 h-8 border-t border-l border-white/10 pointer-events-none" />
-             <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-white/10 pointer-events-none" />
-             <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-white/10 pointer-events-none" />
-             <div className="absolute bottom-0 right-0 w-8 h-8 border-b border-r border-white/10 pointer-events-none" />
-
-             <div className="flex justify-between items-center mb-8 pb-4 border-b border-white/5">
-                <div className="flex gap-8">
-                    <button 
-                      onClick={() => setMembersTab('members')}
-                      className={`text-[11px] font-black uppercase tracking-[0.2em] relative transition-all ${membersTab === 'members' ? 'text-fuchsia-500' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                      {membersTab === 'members' && <div className="absolute -bottom-4 left-0 w-full h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
-                      Biên Chế ({members.length})
-                    </button>
-                    {isLeader && !isViewingOnly && (
-                    <button 
-                        onClick={() => setMembersTab('requests')}
-                        className={`relative text-[11px] font-black uppercase tracking-[0.2em] transition-all ${membersTab === 'requests' ? 'text-fuchsia-500' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        {membersTab === 'requests' && <div className="absolute -bottom-4 left-0 w-full h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
-                        Đơn Tuyển Dụng
-                        {joinRequests.length > 0 && (
-                        <span className="absolute -top-3 -right-4 flex h-4 w-4 items-center justify-center rounded-full bg-fuchsia-500 text-[8px] font-black text-white animate-pulse">
-                            {joinRequests.length}
-                        </span>
-                        )}
-                    </button>
-                    )}
-                </div>
+          <div className="flex-1 space-y-4">
+             <div>
+               <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
+                 <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-white/10 border border-white/10 text-white`}>
+                    [{clanInfo.tag}]
+                 </span>
+                 {clanInfo.role === 'leader' && !isViewingOnly && (
+                   <span className="text-[10px] text-fuchsia-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                     <Crown size={12} /> Leader
+                   </span>
+                 )}
+               </div>
+               <h2 className="text-4xl md:text-5xl font-black text-white uppercase italic tracking-tighter">
+                 {clanInfo.name}
+               </h2>
              </div>
              
-              <div className="space-y-3">
-                {membersTab === 'members' && members.map((member) => (
-                  <MemberRow 
-                    key={member.user_id}
-                    member={member}
-                    isCurrentUser={member.user_id === currentUserId}
-                    currentUserRole={clanInfo?.role}
-                    onKick={() => onKick(member)}
-                    onPromote={() => onPromote(member)}
-                  />
-                ))}
-                {membersTab === 'requests' && isLeader && joinRequests.map((req) => (
-                  <RequestRow 
-                    key={req.user_id}
-                    request={req}
-                    onAccept={() => onAcceptRequest(req)}
-                    onReject={() => onRejectRequest(req)}
-                  />
-                ))}
-                {membersTab === 'requests' && isLeader && joinRequests.length === 0 && (
-                    <p className="text-center text-gray-500 py-8">Không có yêu cầu tham gia nào.</p>
-                )}
-              </div>
-          </div>
-
-          {/* Clan Activities / Wars */}
-          {!isViewingOnly && (
-            <div className="space-y-6">
-               <div className="bg-neutral-900/50 border border-white/5 rounded-2xl p-6">
-                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                   <Trophy className="text-yellow-500" /> Clan Wars
-                 </h3>
-                  <div className="space-y-4">
-                     <div className="text-center py-10 text-gray-500 italic text-sm">Chưa có hoạt động nào...</div>
+             <p className="text-gray-300 font-medium max-w-2xl leading-relaxed text-sm md:text-base border-l-2 border-white/20 pl-4">
+               {clanInfo.description}
+             </p>
+             
+             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 md:gap-8 pt-4">
+               <div className="flex items-center gap-2">
+                  <div className="p-2 bg-white/5 rounded-lg text-gray-400">
+                    <Users size={18} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Thành viên</span>
+                    <span className="text-white font-bold">{approvedMembers.length} / 5</span>
                   </div>
                </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const MemberRow = ({ 
-  member, 
-  isCurrentUser, 
-  currentUserRole, 
-  onKick, 
-  onPromote 
-}: { 
-  member: MemberInfo; 
-  isCurrentUser: boolean; 
-  currentUserRole?: string;
-  onKick: (member: MemberInfo) => void;
-  onPromote: (member: MemberInfo) => void;
-}) => {
-  const navigate = useNavigate();
-  const [showMenu, setShowMenu] = useState(false);
-  const isLeader = member.role === 'leader';
-  
-  const displayName = member.profiles?.display_name || member.profiles?.full_name || 'Người chơi';
-  const avatarUrl = member.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${member.user_id}`;
-  const rankInfo = getRankFromMMR(member.profiles?.mmr);
-
-  return (
-    <div className="group flex items-center justify-between p-5 bg-white/5 border border-white/5 hover:bg-fuchsia-500/5 hover:border-fuchsia-500/20 transition-all relative overflow-visible">
-      {/* Selection Glow */}
-      <div className="absolute inset-y-0 left-0 w-1 bg-fuchsia-500 opacity-0 group-hover:opacity-100 transition-all shadow-[0_0_15px_#d946ef]" />
-      
-      <div className="flex items-center gap-6 flex-1">
-        <div className="relative">
-          <div className="absolute inset-0 bg-fuchsia-500/20 blur opacity-0 group-hover:opacity-100 transition-opacity" />
-          <img 
-            src={avatarUrl} 
-            alt={displayName} 
-            className="w-14 h-14 bg-black object-cover relative z-10 p-0.5 border border-white/10 group-hover:border-fuchsia-500/50 transition-colors" 
-            style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
-          />
-        </div>
-        
-        {/* Info */}
-        <div className="flex-1">
-          <div className="flex flex-col md:flex-row md:items-center gap-2 mb-1">
-            <div className="font-black text-white flex items-center gap-2 text-xl tracking-tighter uppercase italic">
-              {isCurrentUser ? 'Bạn' : displayName} 
-              {isLeader && <Crown size={20} className="text-fuchsia-500 drop-shadow-[0_0_10px_#d946ef]" fill="currentColor" />}
-            </div>
-            <div 
-              className="px-2 py-0.5 text-[8px] font-black tracking-[0.2em] border bg-black/40 w-fit" 
-              style={{ color: rankInfo.color, borderColor: `${rankInfo.color}33` }}
-            >
-              {rankInfo.tier === 'Unranked' ? 'DỮ LIỆU THẤP' : `${rankInfo.tier} ${rankInfo.division}`.toUpperCase()}
-            </div>
-          </div>
-          <div className={`text-[10px] font-black uppercase tracking-[0.3em] ${isLeader ? 'text-fuchsia-500' : 'text-gray-600 group-hover:text-gray-400'}`}>
-            {isLeader ? '// TRƯỞNG NHÓM' : '// THÀNH VIÊN'}
-          </div>
-        </div>
-      </div>
-
-      {/* Actions Trigger */}
-      <div>
-        <button 
-          onClick={() => setShowMenu(!showMenu)}
-          className="p-3 bg-black border border-white/10 text-gray-500 hover:text-white hover:border-fuchsia-500/50 transition-all shadow-xl group-hover:shadow-[0_0_15px_rgba(192,38,211,0.1)]"
-          style={{ clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)' }}
-        >
-          <MoreVertical size={20} />
-        </button>
-
-        {showMenu && (
-          <>
-            <div className="fixed inset-0 z-[100]" onClick={() => setShowMenu(false)} />
-            <div className="absolute right-4 top-16 w-56 bg-neutral-950 border border-fuchsia-500/30 p-2 shadow-[0_0_40px_rgba(0,0,0,0.9)] z-[101] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-              <button 
-                onClick={() => { setShowMenu(false); navigate(`/dashboard/profile?id=${member.user_id}`); }}
-                className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-fuchsia-400 hover:bg-fuchsia-500/10 transition-all"
-              >
-                Xem hồ sơ
-              </button>
-
-              {/* Leader only actions */}
-              {currentUserRole === 'leader' && !isLeader && !isCurrentUser && (
-                <>
-                  <div className="h-px bg-white/5 my-1" />
-                  <button 
-                    onClick={() => { setShowMenu(false); onPromote(member); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-white hover:bg-blue-500/10 transition-all"
-                  >
-                    Chuyển giao quyền hạn
-                  </button>
-                  <button 
-                    onClick={() => { setShowMenu(false); onKick(member); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-500/10 transition-all"
-                  >
-                    Trục xuất quân đoàn
-                  </button>
-                </>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const RequestRow = ({
-    request,
-    onAccept,
-    onReject
-}: {
-    request: MemberInfo;
-    onAccept: () => void;
-    onReject: () => void;
-}) => {
-    const displayName = request.profiles?.display_name || request.profiles?.full_name || 'Người chơi';
-    const avatarUrl = request.profiles?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${request.user_id}`;
-    const rankInfo = getRankFromMMR(request.profiles?.mmr);
-
-    return (
-        <div className="flex items-center justify-between p-5 bg-white/5 border border-white/5 hover:bg-blue-500/5 transition-all">
-      <div className="flex items-center gap-6 flex-1">
-        <div className="relative">
-          <img 
-            src={avatarUrl} 
-            alt={displayName} 
-            className="w-14 h-14 bg-black object-cover p-0.5 border border-white/10" 
-            style={{ clipPath: 'polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px)' }}
-          />
-        </div>
-        <div className="flex-1">
-          <div className="flex flex-col md:flex-row md:items-center gap-2 mb-1">
-             <div className="font-black text-white text-xl tracking-tighter uppercase italic">{displayName}</div>
-             <div 
-               className="px-2 py-0.5 text-[8px] font-black tracking-[0.2em] border bg-black/40 w-fit" 
-               style={{ color: rankInfo.color, borderColor: `${rankInfo.color}33` }}
-             >
-               {rankInfo.tier === 'Unranked' ? 'NEW_CLIENT' : `${rankInfo.tier} ${rankInfo.division}`.toUpperCase()}
+               
+               <div className="flex items-center gap-2">
+                  <div className="p-2 bg-white/5 rounded-lg text-gray-400">
+                    <Trophy size={18} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Điểm Clan</span>
+                    <span className="text-white font-bold">--</span>
+                  </div>
+               </div>
              </div>
           </div>
-          <div className="text-[10px] text-blue-400 font-black uppercase tracking-[0.3em]">// CHỜ PHÊ DUYỆT</div>
-        </div>
-      </div>
-            <div className="flex items-center gap-3">
-                <button onClick={onAccept} className="px-5 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(192,38,211,0.2)]">
-                    <MailCheck size={16} /> Tiếp Nhận
-                </button>
-                <button onClick={onReject} className="p-3 bg-white/5 hover:bg-red-500 text-gray-500 hover:text-white transition-all border border-white/10">
-                    <MailX size={20} />
-                </button>
-            </div>
-        </div>
-    );
-};
-
-const FindClanSection = ({ userClanStatus, recommendedClans, onCreateClan, onJoinClan, onCancelRequest, onViewDetails, hasClan, userClanId }: { userClanStatus: { [clanId: string]: 'pending' | 'member' }, recommendedClans: ClanInfo[], onCreateClan: () => void, onJoinClan: (id: string) => void, onCancelRequest: (id: string) => void, onViewDetails: (id: string) => void, hasClan: boolean, userClanId?: string }) => {
-    return (
-        <div className="space-y-10">
-             {/* Search Bar - Tech Edition */}
-            <div className="flex flex-col md:flex-row gap-6">
-                <div className="flex-1 flex items-center bg-black border border-white/10 px-6 py-4 transition-all focus-within:border-fuchsia-500/50 focus-within:shadow-[0_0_15px_rgba(192,38,211,0.1)] relative">
-                    <Search size={22} className="text-fuchsia-500" />
-                    <input 
-                      type="text" 
-                      placeholder="TÌM CLAN [NAME / TAG]..." 
-                      className="bg-transparent border-none outline-none text-[11px] font-black tracking-[0.2em] ml-4 w-full text-white placeholder-gray-700 uppercase" 
-                    />
-                    <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-fuchsia-500/30" />
-                    <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-fuchsia-500/30" />
-                </div>
-                {!hasClan && (
-                  <button 
-                      onClick={onCreateClan}
-                      className="px-8 py-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all hover:translate-y-[-2px] shadow-[0_0_20px_rgba(192,38,211,0.3)] animate-in zoom-in duration-500"
-                  >
-                      <Plus size={20} /> Tạo clan MỚI
-                  </button>
-                )}
-            </div>
-
-            {/* Recommendations List - Tech Style */}
-            <div className="relative bg-neutral-950 border border-white/5 overflow-hidden">
-                {/* Background Pattern */}
-                <div className="absolute inset-0 bg-dot-pattern opacity-5"></div>
-                
-                {/* Header */}
-                <div className="relative p-8 border-b border-white/5 bg-gradient-to-r from-fuchsia-500/5 to-transparent">
-                    {/* HUD Corners */}
-                    <div className="absolute top-0 right-0 w-12 h-12 border-t border-r border-fuchsia-500/20"></div>
-                    <div className="absolute bottom-0 left-0 w-12 h-12 border-b border-l border-fuchsia-500/20"></div>
-                    
-                    <div className="flex items-center gap-4">
-                        <div className="w-1 h-8 bg-fuchsia-500 skew-x-[-20deg]"></div>
-                        <div>
-                            <h3 className="text-2xl font-black text-white tracking-tighter uppercase italic">
-                              Danh sách <span className="text-fuchsia-500">Clan</span>
-                            </h3>
-                        </div>
-                    </div>
-                </div>
-                
-                <div className="divide-y divide-white/5 relative">
-                    {recommendedClans.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-                        {recommendedClans.map((clan) => (
-                          <ClanCard
-                            key={clan.id}
-                            clan={{
-                              id: clan.id,
-                              name: clan.name,
-                              description: clan.description,
-                              member_count: clan.members_count,
-                              tag: clan.tag,
-                              icon: clan.icon,
-                              color: clan.color,
-                              experience: 0, 
-                            }}
-                            onJoin={onJoinClan}
-                            onCancel={onCancelRequest}
-                            onDetails={onViewDetails}
-                            status={userClanStatus[clan.id]}
-                            hasClan={hasClan}
-                            userClanId={userClanId}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-12 text-center">
-                          <div className="text-[10px] font-black text-gray-700 uppercase tracking-[0.3em] mb-2">// NO RECORDS FOUND</div>
-                          <div className="text-sm font-bold text-gray-600 italic">Chưa có Clan nào được thành lập trong hệ thống.</div>
-                      </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    )
-}
-
-interface ClanCardProps {
-  clan: {
-    id: string;
-    name: string;
-    description: string;
-    member_count: number;
-    experience?: number;
-    tag?: string;
-    icon?: string;
-    color?: string;
-  };
-  onJoin: (id: string) => void;
-  onCancel: (id: string) => void;
-  onDetails: (id: string) => void;
-  status?: 'pending' | 'member';
-  hasClan?: boolean;
-  userClanId?: string;
-}
-
-const ClanCard = ({ clan, onJoin, onCancel, onDetails, status, hasClan, userClanId }: ClanCardProps) => {
-  const selectedIconObj = CLAN_ICONS.find(i => i.id === clan.icon) || CLAN_ICONS[0];
-  const selectedColorObj = CLAN_COLORS.find(c => c.id === clan.color) || CLAN_COLORS[0];
-  const ClanIcon = selectedIconObj.icon;
-
-  return (
-    <div className="group relative bg-neutral-950 border border-white/10 hover:border-fuchsia-500/50 transition-all overflow-hidden flex flex-col h-full shadow-2xl">
-      {/* Background patterns */}
-      <div className="absolute inset-0 bg-dot-pattern opacity-5"></div>
-      <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-      
-      {/* HUD Accents */}
-      <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-white/5 pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-white/5 pointer-events-none" />
-
-      <div className="p-8 flex flex-col flex-1 relative z-10">
-        <div className="flex items-start justify-between mb-8">
-           <div 
-             className="w-16 h-16 bg-black border flex items-center justify-center shadow-[0_0_15px_rgba(192,38,211,0.1)] group-hover:border-opacity-100 transition-all"
-             style={{ 
-               clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)',
-               borderColor: `${selectedColorObj.hex}50`,
-               color: selectedColorObj.hex
-             }}
-           >
-              <ClanIcon size={32} />
-           </div>
-           
-           <div className="text-right">
-              <div className="text-[9px] font-black text-gray-600 uppercase tracking-[0.2em] mb-1">Thành viên</div>
-              <div className="text-2xl font-black text-white tabular-nums tracking-tighter italic">{clan.member_count}<span className="text-gray-700 font-normal mx-0.5">/</span>5  </div>
-           </div>
-        </div>
-
-        <div className="mb-8">
-           <div className="flex items-center gap-3 mb-3">
-              <h3 className="text-2xl font-black text-white uppercase tracking-tighter italic group-hover:text-fuchsia-500 transition-colors truncate">
-                 {clan.name}
-              </h3>
-              <div className="px-1.5 py-0.5 bg-white/5 border border-white/10 text-[9px] font-black text-gray-500 uppercase tracking-widest">
-                {clan.tag || 'SPEC'}
-              </div>
-           </div>
-           <p className="text-gray-500 text-xs font-bold line-clamp-2 leading-relaxed italic border-l border-fuchsia-500/20 pl-3">
-              {clan.description || "TÀI LIỆU QUÂN ĐOÀN ĐANG TRONG TRẠNG THÁI PHÂN LOẠI."}
-           </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-8">
-           <div className="p-4 bg-black border border-white/5 relative group-hover:border-fuchsia-500/20 transition-colors">
-              <div className="text-[9px] font-black text-gray-600 uppercase tracking-widest mb-1">Xếp hạng  </div>
-              <div className="text-sm font-black text-fuchsia-500 tabular-nums">{clan.experience || 0}</div>
-           </div>
-           <div className="p-4 bg-black border border-white/5 relative group-hover:border-fuchsia-500/20 transition-colors">
-              <div className="text-[9px] font-black text-gray-600 uppercase tracking-widest mb-1">Trạng thái</div>
-              <div className="text-sm font-black text-white uppercase tracking-tighter italic">Hoạt động</div>
-           </div>
-        </div>
-
-        <div className="flex gap-3 mt-auto">
-           <button 
-             onClick={() => onDetails(clan.id)}
-             className="px-4 py-3 bg-black border border-white/10 text-gray-500 font-black text-[10px] uppercase tracking-[0.2em] hover:text-white hover:border-white/30 transition-all"
-             style={{ clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)' }}
-           >
-             Chi tiết
-           </button>
-           
-            {!status && !hasClan && clan.id !== userClanId && (
-             <button 
-               onClick={() => onJoin(clan.id)}
-               className="flex-1 py-3 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black text-[10px] uppercase tracking-[0.2em] transition-all shadow-[0_0_15px_rgba(192,38,211,0.2)] active:scale-95 flex items-center justify-center gap-2"
-               style={{ clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)' }}
-             >
-               GIA NHẬP
-             </button>
-           )}
-
-           {status === 'pending' && (
-             <button 
-               onClick={() => onCancel(clan.id)}
-               className="flex-1 py-3 bg-white/5 border border-fuchsia-500/50 text-fuchsia-500 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-fuchsia-500 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2"
-               style={{ clipPath: 'polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px)' }}
-             >
-               ĐANG CHỜ...
-             </button>
-           )}
-           
-           {status === 'member' && (
-              <div className="flex-1 py-3 border border-blue-500/30 text-blue-400 font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 italic">
-                 Tham gia
-              </div>
-           )}
-        </div>
-      </div>
-
-      {/* Hover Scanline */}
-      <div className="absolute inset-x-0 top-0 h-1 bg-fuchsia-500/20 animate-scanline-fast opacity-0 group-hover:opacity-100 pointer-events-none" />
-    </div>
-  );
-};
-
-// --- Sub Components ---
-
-const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, cancelText, type = 'danger' }: { isOpen: boolean, onClose: () => void, onConfirm: () => void, title: string, message: string, confirmText: string, cancelText: string, type?: 'danger' | 'info' }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-300">
-       <div className="bg-neutral-950 border border-white/10 w-full max-w-md overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.9)] p-10 text-center space-y-10 animate-in zoom-in-95 duration-500 relative">
-          {/* HUD Elements */}
-          <div className="absolute top-0 right-0 w-16 h-16 border-t border-r border-fuchsia-500/20" />
-          <div className="absolute bottom-0 left-0 w-16 h-16 border-b border-l border-fuchsia-500/20" />
           
-          <div className="space-y-6 relative z-10">
-             <div className={`w-24 h-24 mx-auto flex items-center justify-center relative`}>
-                <div className={`absolute inset-0 ${type === 'danger' ? 'bg-red-500' : 'bg-fuchsia-500'} opacity-10 animate-pulse`} style={{ clipPath: 'polygon(20% 0, 100% 0, 100% 80%, 80% 100%, 0 100%, 0 20%)' }} />
-                <div className={`w-20 h-20 bg-black border ${type === 'danger' ? 'border-red-500/50' : 'border-fuchsia-500/50'} flex items-center justify-center shadow-inner relative`} style={{ clipPath: 'polygon(20% 0, 100% 0, 100% 80%, 80% 100%, 0 100%, 0 20%)' }}>
-                   {type === 'danger' ? <AlertTriangle size={36} className="text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" /> : <Shield size={36} className="text-fuchsia-500 drop-shadow-[0_0_10px_rgba(192,38,211,0.5)]" />}
-                </div>
+          {/* Actions */}
+          <div className="flex flex-col gap-3 min-w-[160px]">
+             {isViewingOnly ? (
+               // Viewing Only Actions (e.g. Join if not in clan)
+               <div className="text-center">
+                  <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">
+                    Thông tin Clan
+                  </span>
+               </div>
+             ) : (
+               <>
+                 {clanInfo.role === 'leader' && onSettingsClick && (
+                   <button 
+                     onClick={onSettingsClick}
+                     className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white font-bold uppercase tracking-wider text-xs rounded-xl border border-white/10 transition-all flex items-center justify-center gap-2"
+                   >
+                     <Settings size={14} />
+                     Cài đặt
+                   </button>
+                 )}
+                 <button 
+                   onClick={onLeaveRequest}
+                   className="px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold uppercase tracking-wider text-xs rounded-xl border border-red-500/20 transition-all flex items-center justify-center gap-2"
+                 >
+                   <LogOut size={14} />
+                   Rời Clan
+                 </button>
+               </>
+             )}
+          </div>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Members List - REMOVED overflow-hidden for dropdown visibility */}
+        <div className="lg:col-span-2">
+          <div className="bg-neutral-900/50 border border-white/5 rounded-2xl">
+             <div className="p-6 border-b border-white/5 flex justify-between items-center bg-neutral-900/50 rounded-t-2xl">
+                <h3 className="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Users size={18} className="text-fuchsia-500" /> Thành viên ({approvedMembers.length})
+                </h3>
              </div>
              
-             <div className="space-y-3">
-                <h3 className="text-3xl font-black text-white uppercase tracking-tighter italic">{title}</h3>
-                <div className="h-0.5 w-16 bg-fuchsia-500/50 mx-auto" />
-                <p className="text-gray-500 text-sm font-bold leading-relaxed px-4 italic">{message}</p>
+             <div className="divide-y divide-white/5">
+                {approvedMembers.map((member, index) => (
+                  <div 
+                    key={member.user_id} 
+                    className={`p-4 hover:bg-white/5 transition-colors flex items-center gap-4 group relative ${index === approvedMembers.length - 1 ? 'rounded-b-2xl' : ''}`}
+                  >
+                     {/* Avatar */}
+                     <div className="w-12 h-12 bg-neutral-800 rounded-full overflow-hidden border border-white/10">
+                        {member.profiles.avatar_url ? (
+                          <img src={member.profiles.avatar_url} alt="Avt" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-500 font-bold">
+                            {member.profiles.display_name?.charAt(0) || '?'}
+                          </div>
+                        )}
+                     </div>
+                     
+                     {/* Info */}
+                     <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                           <h4 className="font-bold text-white">
+                             {member.profiles.display_name || 'Unknown User'}
+                           </h4>
+                           {member.role === 'leader' && (
+                             <span className="p-0.5 bg-yellow-500/10 rounded text-yellow-500" title="Leader">
+                               <Crown size={12} />
+                             </span>
+                           )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                           <span className="flex items-center gap-1">
+                             <Target size={10} /> MMR: {member.profiles.mmr || 0}
+                           </span>
+                           <span>•</span>
+                           <span>Tham gia: {new Date(member.joined_at).toLocaleDateString()}</span>
+                        </div>
+                     </div>
+                     
+                     {/* Actions - Visible to everyone for Profile View, but Leader specific actions guarded */}
+                     {currentUserId !== member.user_id && (
+                       <div className="relative">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(openMenuId === member.user_id ? null : member.user_id);
+                            }}
+                            className={`p-2 rounded-lg transition-colors ${openMenuId === member.user_id ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white hover:bg-white/10'}`}
+                          >
+                             <MoreVertical size={16} />
+                          </button>
+                          
+                          {/* Dropdown */}
+                          {openMenuId === member.user_id && (
+                             <div className="absolute right-8 bottom-0 mt-1 w-52 bg-neutral-900 border border-white/10 rounded-lg shadow-xl z-50 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                               <div className="p-1">
+                                 {/* View Profile - Available to All */}
+                                 <button 
+                                   onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/profile?id=${member.user_id}`); setOpenMenuId(null); }}
+                                   className="w-full text-left px-3 py-2 text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors flex items-center gap-2"
+                                 >
+                                   <Eye size={16} className="text-cyan-400" />
+                                   Xem Hồ Sơ
+                                 </button>
+
+                                 {/* Leader Only Actions */}
+                                 {clanInfo?.role === 'leader' && !isViewingOnly && (
+                                   <>
+                                     <div className="h-px bg-white/5 my-1" />
+                                     <button 
+                                       onClick={(e) => { e.stopPropagation(); onPromote(member); setOpenMenuId(null); }}
+                                       className="w-full text-left px-3 py-2 text-sm font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors flex items-center gap-2"
+                                     >
+                                       <Crown size={16} className="text-yellow-500" />
+                                       Phong Trưởng Nhóm
+                                     </button>
+                                     <button 
+                                       onClick={(e) => { e.stopPropagation(); onKick(member); setOpenMenuId(null); }}
+                                       className="w-full text-left px-3 py-2 text-sm font-bold text-red-500 hover:bg-red-500/10 rounded transition-colors flex items-center gap-2"
+                                     >
+                                       <LogOut size={16} />
+                                       Xóa Khỏi Clan
+                                     </button>
+                                   </>
+                                 )}
+                               </div>
+                             </div>
+                          )}
+                       </div>
+                     )}
+                  </div>
+                ))}
              </div>
           </div>
+        </div>
+        
+        {/* Sidebar Info or Requests */}
+        <div className="space-y-6">
+           {clanInfo?.role === 'leader' && joinRequests.length > 0 && !isViewingOnly && (
+             <div className="bg-neutral-900/50 border border-fuchsia-500/20 rounded-2xl overflow-hidden animate-pulse-border">
+                <div className="p-4 bg-fuchsia-500/10 border-b border-fuchsia-500/20 flex justify-between items-center">
+                   <h3 className="text-sm font-black text-fuchsia-400 uppercase tracking-wider flex items-center gap-2">
+                     <MailCheck size={16} /> Yêu cầu tham gia ({joinRequests.length})
+                   </h3>
+                </div>
+                
+                <div className="divide-y divide-white/5 max-h-[300px] overflow-y-auto">
+                   {joinRequests.map(req => (
+                     <div key={req.user_id} className="p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                           <div className="w-8 h-8 rounded-full bg-neutral-800 overflow-hidden border border-white/10">
+                              {req.profiles.avatar_url ? (
+                                <img src={req.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xs text-gray-500 font-bold">
+                                  {req.profiles.display_name?.charAt(0) || '?'}
+                                </div>
+                              )}
+                           </div>
+                           <div>
+                              <h4 className="text-sm font-bold text-white">{req.profiles.display_name}</h4>
+                              <span className="text-[10px] text-gray-500">MMR: {req.profiles.mmr || 0}</span>
+                           </div>
+                        </div>
+                        <div className="flex gap-2">
+                           <button 
+                             onClick={() => onAcceptRequest(req)}
+                             className="flex-1 py-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors"
+                           >
+                             Chấp nhận
+                           </button>
+                           <button 
+                             onClick={() => onRejectRequest(req)}
+                             className="flex-1 py-2 bg-neutral-800 hover:bg-neutral-700 text-gray-400 hover:text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-colors"
+                           >
+                             Từ chối
+                           </button>
+                        </div>
+                     </div>
+                   ))}
+                </div>
+             </div>
+           )}
 
-          <div className="flex flex-col gap-4 relative z-10">
-             <button 
-               onClick={onConfirm}
-               className={`w-full py-5 ${type === 'danger' ? 'bg-red-600 hover:bg-red-500 shadow-[0_0_30px_rgba(239,68,68,0.3)]' : 'bg-fuchsia-600 hover:bg-fuchsia-500 shadow-[0_0_30px_rgba(192,38,211,0.3)]'} text-white font-black uppercase tracking-[0.3em] text-xs transition-all active:scale-95`}
-               style={{ clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)' }}
-             >
-               Confirm_{confirmText}
-             </button>
-             <button 
-                onClick={onClose}
-                className="w-full py-5 bg-black border border-white/10 text-gray-600 font-black text-xs uppercase tracking-[0.2em] hover:text-white hover:bg-white/5 transition-all"
-                style={{ clipPath: 'polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px)' }}
-              >
-                {cancelText}
-              </button>
-          </div>
-       </div>
+           <div className="p-6 bg-neutral-900 border border-white/5 rounded-2xl">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4">
+                Thống Kê Clan
+              </h3>
+              <div className="space-y-4">
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400">Thứ hạng</span>
+                    <span className="text-white font-bold">Top 100</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400">Điểm Uy Tín</span>
+                    <span className="text-green-500 font-bold">Good</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-gray-400">Thành lập</span>
+                    <span className="text-white font-bold">2024</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+      </div>
     </div>
   );
 };
 
-const StatBadge = ({ icon: Icon, label, value, color = "text-white" }: { icon: React.ElementType, label: string, value: string, color?: string }) => (
-  <div className="flex items-center gap-3 bg-black border border-white/10 px-5 py-3 relative">
-    <div className="absolute top-0 left-0 w-1 h-1 bg-fuchsia-500" />
-    <Icon size={14} className="text-fuchsia-500" />
-    <div className="flex flex-col">
-      <span className="text-[8px] font-black text-gray-600 uppercase tracking-[0.2em]">{label}</span>
-      <span className={`text-xs font-black ${color} tracking-widest`}>{value}</span>
+const FindClanSection = ({ 
+  userClanStatus,
+  recommendedClans, 
+  onCreateClan, 
+  onJoinClan,
+  onCancelRequest,
+  onViewDetails,
+  hasClan,
+  userClanId
+}: { 
+  userClanStatus: { [clanId: string]: 'pending' | 'member' };
+  recommendedClans: ClanInfo[];
+  onCreateClan: () => void;
+  onJoinClan: (id: string) => void;
+  onCancelRequest: (id: string) => void;
+  onViewDetails: (id: string) => void;
+  hasClan: boolean;
+  userClanId?: string;
+}) => {
+  return (
+    <div className="space-y-8">
+      {/* Search & Filter - Simplified */}
+      <div className="flex flex-col md:flex-row gap-4">
+         <div className="flex-1 relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+            <input 
+              type="text" 
+              placeholder="Tìm kiếm Clan theo tên hoặc tag..." 
+              className="w-full bg-neutral-900 border border-white/10 rounded-xl py-4 pl-12 pr-4 text-white placeholder-gray-600 focus:outline-none focus:border-fuchsia-500/50 transition-all font-medium"
+            />
+         </div>
+         <button className="px-6 py-4 bg-neutral-900 border border-white/10 text-white font-bold uppercase tracking-wider rounded-xl hover:bg-neutral-800 transition-colors">
+            Bộ Lọc
+         </button>
+         {!hasClan && (
+           <button 
+             onClick={onCreateClan}
+             className="px-8 py-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black uppercase tracking-[0.2em] rounded-xl shadow-[0_0_20px_rgba(192,38,211,0.3)] hover:shadow-fuchsia-500/50 transition-all active:scale-95 flex items-center justify-center gap-2"
+           >
+             <Plus size={18} />
+             Tạo Clan
+           </button>
+         )}
+      </div>
+
+      {/* Recommended Grid */}
+      <h3 className="text-xl font-black text-white uppercase italic tracking-wider flex items-center gap-2">
+        <Target size={24} className="text-fuchsia-500" />
+        Đề Xuất Cho Bạn
+      </h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+         {recommendedClans.map((clan, idx) => {
+            // Find icon and color
+            const { icon: IconComponent } = CLAN_ICONS.find((item: any) => item.id === clan.icon) || { icon: Shield };
+            const colorObj = CLAN_COLORS.find(c => c.id === clan.color) || CLAN_COLORS[0];
+            const status = userClanStatus[clan.id];
+            const isUserClan = clan.id === userClanId;
+
+            return (
+              <div key={clan.id} className="group bg-neutral-900/50 border border-white/5 rounded-2xl overflow-hidden hover:border-fuchsia-500/30 transition-all hover:-translate-y-1 relative">
+                  <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${colorObj.classes}`} />
+                  
+                  <div className="p-6 space-y-4">
+                     {/* Header */}
+                     <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-4">
+                           <div className={`w-14 h-14 rounded-xl ${colorObj.bg}/10 flex items-center justify-center border border-white/10`}>
+                              <IconComponent size={28} style={{ color: colorObj.hex }} />
+                           </div>
+                           <div>
+                              <h4 className="text-lg font-black text-white uppercase italic tracking-tight leading-none mb-1">
+                                {clan.name}
+                              </h4>
+                              <span className="text-[10px] bg-white/5 text-gray-400 px-1.5 py-0.5 rounded font-mono font-bold">
+                                #{clan.tag}
+                              </span>
+                           </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                           <span className="text-xs font-bold text-gray-500 uppercase">Rank</span>
+                           <span className="text-yellow-500 font-black italic shadow-yellow-500/10 drop-shadow-sm">#{idx + 1}</span>
+                        </div>
+                     </div>
+                     
+                     {/* Stats */}
+                     <div className="grid grid-cols-2 gap-2 py-4 border-y border-white/5">
+                        <div className="text-center border-r border-white/5">
+                           <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Thành viên</span>
+                           <span className="text-white font-bold">{clan.members_count}/50</span>
+                        </div>
+                        <div className="text-center">
+                           <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Điểm</span>
+                           <span className="text-white font-bold">1,250</span>
+                        </div>
+                     </div>
+                     
+                     <p className="text-xs text-gray-400 line-clamp-2 h-8 leading-relaxed">
+                        {clan.description || 'Chưa có mô tả.'}
+                     </p>
+                     
+                     {/* Action Button */}
+                     {!isUserClan && (
+                       <div className="flex gap-2">
+                          <button 
+                            onClick={status === 'pending' ? () => onCancelRequest(clan.id) : () => onJoinClan(clan.id)}
+                            className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-all border
+                            ${status === 'pending' 
+                              ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20 hover:bg-yellow-500/20' 
+                              : 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-fuchsia-500/30'}`}
+                          >
+                            {status === 'pending' ? 'Hủy Yêu Cầu' : 'Xin Gia Nhập'}
+                          </button>
+                          
+                          <button 
+                             onClick={() => onViewDetails(clan.id)}
+                             className="w-10 h-10 flex items-center justify-center bg-neutral-900 border border-white/10 rounded-lg text-gray-400 hover:text-white hover:border-white/30 transition-all"
+                             title="Xem chi tiết"
+                          >
+                             <BookUser size={16} />
+                          </button>
+                       </div>
+                     )}
+                     
+                     {isUserClan && (
+                        <div className="w-full py-3 bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-500 text-center text-[10px] font-black uppercase tracking-wider rounded-lg">
+                           Clan Của Bạn
+                        </div>
+                     )}
+                  </div>
+              </div>
+            );
+         })}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+
+const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText, cancelText, type = 'danger' }: any) => {
+  if (!isOpen) return null;
+  
+  const isDanger = type === 'danger';
+  const colorClass = isDanger ? 'red-500' : 'blue-500';
+  
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className={`bg-neutral-900 border border-${colorClass}/30 rounded-2xl max-w-md w-full p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative overflow-hidden`}>
+        <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-${colorClass} to-transparent`} />
+        
+        <div className="text-center space-y-6">
+           <div className={`w-16 h-16 mx-auto bg-${colorClass}/10 rounded-full flex items-center justify-center border border-${colorClass}/20`}>
+              <AlertTriangle size={32} className={`text-${colorClass}`} />
+           </div>
+           
+           <div className="space-y-2">
+             <h3 className="text-xl font-black text-white uppercase tracking-tight">{title}</h3>
+             <p className="text-gray-400 font-medium text-sm leading-relaxed">
+               {message}
+             </p>
+           </div>
+           
+           <div className="flex gap-4 pt-2">
+             <button 
+               onClick={onClose}
+               className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white font-bold uppercase tracking-wider text-xs rounded-xl transition-all"
+             >
+               {cancelText}
+             </button>
+             <button 
+               onClick={onConfirm}
+               className={`flex-1 py-3 bg-${colorClass} hover:bg-${colorClass}/80 text-white font-bold uppercase tracking-wider text-xs rounded-xl shadow-lg transition-all`}
+             >
+               {confirmText}
+             </button>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default ClanView;

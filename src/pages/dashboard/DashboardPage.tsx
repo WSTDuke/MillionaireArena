@@ -51,22 +51,76 @@ const DashboardPage = () => {
   }, [location.pathname]);
 
   useEffect(() => {
-    const getData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUser(user);
 
-      if (user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-        setProfile(data);
+
+    const getClanData = async (userId: string) => {
+      // 1. Check membership
+      const { data: memberData, error: memberError } = await supabase
+        .from('clan_members')
+        .select('clan_id, status, role')
+        .eq('user_id', userId);
+
+      if (memberError) {
+        console.error("Error fetching clan members:", memberError);
+        return;
+      }
+
+      if (memberData && memberData.length > 0) {
+        const approvedMember = memberData.find(m => m.status === 'approved');
+        const statusMap: { [key: string]: 'pending' | 'member' } = {};
+        
+        memberData.forEach(m => {
+          if (m.status === 'approved' || m.status === 'pending') {
+            statusMap[m.clan_id] = m.status;
+          }
+        });
+
+        // 2. If approved member, fetch clan details
+        let clanInfo = null;
+        if (approvedMember) {
+           const { data: clanDetails, error: clanError } = await supabase
+            .from('clans')
+            .select('*')
+            .eq('id', approvedMember.clan_id)
+            .single();
+            
+           if (!clanError && clanDetails) {
+             clanInfo = {
+               ...clanDetails,
+               role: approvedMember.role
+             };
+           }
+        }
+
+        setDashboardCache(prev => ({
+          ...prev,
+          userClanStatus: statusMap,
+          clanInfo: clanInfo
+        }));
       }
     };
-    getData();
+
+    const initData = async () => {
+       const { data: { user } } = await supabase.auth.getUser();
+       setUser(user);
+
+       if (user) {
+         // Parallel fetch for profile and clan data
+         await Promise.all([
+           (async () => {
+             const { data } = await supabase
+               .from("profiles")
+               .select("*")
+               .eq("id", user.id)
+               .single();
+             setProfile(data);
+           })(),
+           getClanData(user.id)
+         ]);
+       }
+    };
+
+    initData();
   }, []);
 
   // --- SEARCH LOGIC ---
