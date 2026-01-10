@@ -89,12 +89,38 @@ interface TournamentRegistration {
   clans: ClanInfo;
 }
 
+const SkeletonBox = ({ className = '' }: { className?: string }) => (
+  <div className={`bg-neutral-800 rounded animate-pulse ${className}`}></div>
+);
+
 const TournamentDetailView = () => {
   const { dashboardCache } = useOutletContext<DashboardContext>();
+  const { id } = useParams<{ id: string }>(); // Get ID from URL
   const navigate = useNavigate();
   const location = useLocation();
-  const { id } = useParams<{ id: string }>(); // Get ID from URL
-  const [activeTab, setActiveTab] = useState(location.state?.returnTab || 'overview');
+  
+  // Use URL to determine active tab
+  const activeTab = useMemo(() => {
+    const parts = location.pathname.split('/');
+    const lastPart = parts[parts.length - 1];
+    const validTabs = ['overview', 'bracket', 'clans', 'match'];
+    if (validTabs.includes(lastPart)) return lastPart;
+    // Handle old 'teams' state or default
+    if (location.state?.returnTab === 'teams') return 'clans';
+    return 'overview';
+  }, [location.pathname, location.state]);
+
+  const setActiveTab = (tab: string) => {
+    navigate(`/dashboard/tournaments/${id}/${tab}`);
+  };
+
+  // Synchronize URL if at root ID
+  useEffect(() => {
+    if (id && location.pathname.endsWith(id)) {
+      navigate(`/dashboard/tournaments/${id}/overview`, { replace: true });
+    }
+  }, [id, location.pathname, navigate]);
+
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
@@ -376,27 +402,25 @@ const TournamentDetailView = () => {
       setToast({ message: (<div className="flex flex-col gap-1"><span className="font-bold">Đăng ký thành công!</span><span className="text-xs opacity-90">Phí tham dự đã được trừ vào tài khoản.</span></div>), type: 'success' });
       await fetchTournamentData();
     } catch (err) {
-      const error = err as Error;
-      setToast({ message: error.message || "Đăng ký thất bại. Vui lòng thử lại.", type: 'error' });
+      const errorMessage = err instanceof Error ? err.message : "Đăng ký thất bại. Vui lòng thử lại.";
+      setToast({ message: errorMessage, type: 'error' });
       setShowConfirmModal(false);
     } finally {
       setIsRegistering(false);
     }
   };
 
-  const toggleDropdown = (id: string, e: React.MouseEvent) => {
+  const toggleDropdown = (dropdownId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (openDropdownId === id) setOpenDropdownId(null);
-    else setOpenDropdownId(id);
+    if (openDropdownId === dropdownId) setOpenDropdownId(null);
+    else setOpenDropdownId(dropdownId);
   };
 
   const handleViewClanDetails = (clanId: string) => {
       navigate(`/dashboard/clan?id=${clanId}`, { state: { returnTo: location.pathname, returnTab: 'teams' } }); 
   };
 
-  if (loading && !tournament) {
-      return (<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-fuchsia-500" size={40} /></div>);
-  }
+  // No early return for loading to allow granular skeletons in the JSX
 
   return (
     <div className="space-y-8 animate-fade-in-up">
@@ -421,19 +445,42 @@ const TournamentDetailView = () => {
             <span className="px-3 py-1 bg-fuchsia-600/20 border border-fuchsia-500/50 text-fuchsia-400 text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_0_15px_rgba(192,38,211,0.2)]">{currentData.status}</span>
             <span className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em]">// {currentData.tournament_type}</span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-black text-white mb-6 uppercase italic tracking-tighter max-w-4xl leading-none">{currentData.title}</h1>
+          <h1 className="text-4xl md:text-6xl font-black text-white mb-6 uppercase italic tracking-tighter max-w-4xl leading-none">
+            {tournament ? currentData.title : <SkeletonBox className="h-16 w-3/4 mb-4" />}
+          </h1>
           <div className="flex flex-wrap gap-8 md:gap-16 border-t border-white/10 pt-8">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-fuchsia-500/20 rounded-lg border border-fuchsia-500/20"><Trophy size={24} className="text-fuchsia-500" /></div>
-              <div className="flex flex-col"><span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tổng giải thưởng</span><span className="flex items-center gap-2 text-xl font-black text-white italic">{currentData.prize_pool} <Coins size={20} className="text-yellow-500" /></span></div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tổng giải thưởng</span>
+                {tournament ? (
+                   <span className="flex items-center gap-2 text-xl font-black text-white italic">{currentData.prize_pool} <Coins size={20} className="text-yellow-500" /></span>
+                ) : (
+                  <SkeletonBox className="h-6 w-24 mt-1" />
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20"><Users size={24} className="text-blue-500" /></div>
-              <div className="flex flex-col"><span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Số đội tham gia</span><span className="text-xl font-black text-white italic">{participantsDisplay}</span></div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Số đội tham gia</span>
+                {tournament ? (
+                  <span className="text-xl font-black text-white italic">{participantsDisplay}</span>
+                ) : (
+                  <SkeletonBox className="h-6 w-16 mt-1" />
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20"><Calendar size={24} className="text-green-500" /></div>
-              <div className="flex flex-col"><span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Khởi tranh</span><span className="text-xl font-black text-white italic">{currentData.start_date}</span></div>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Khởi tranh</span>
+                {tournament ? (
+                  <span className="text-xl font-black text-white italic">{currentData.start_date}</span>
+                ) : (
+                  <SkeletonBox className="h-6 w-32 mt-1" />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -442,22 +489,33 @@ const TournamentDetailView = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div className="flex border-b border-white/10">
-            {['overview', 'bracket', 'teams', 'matches'].map((tab) => (
+            {['overview', 'bracket', 'clans', 'match'].map((tab) => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-4 text-xs font-black uppercase tracking-[0.2em] relative transition-all ${activeTab === tab ? 'text-white' : 'text-gray-600 hover:text-gray-400'}`}>
-                {tab === 'overview' ? 'Tổng quan' : tab === 'bracket' ? 'Nhánh đấu' : tab === 'teams' ? 'Đội tham gia' : 'Trận đấu'}
+                {tab === 'overview' ? 'Tổng quan' : tab === 'bracket' ? 'Nhánh đấu' : tab === 'clans' ? 'Đội tham gia' : 'Trận đấu'}
                 {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
               </button>
             ))}
           </div>
 
           <div className="p-6 bg-neutral-900/50 border border-white/5 rounded-xl min-h-[300px]">
-            {activeTab === 'overview' && (
-              <div className="space-y-8">
-                <div><h3 className="text-lg font-black text-white uppercase italic tracking-wider mb-4 flex items-center gap-2"><Shield size={18} className="text-fuchsia-500" /> Giới thiệu</h3><p className="text-gray-400 leading-relaxed font-medium">{currentData.description}</p></div>
-                <div><h3 className="text-lg font-black text-white uppercase italic tracking-wider mb-4 flex items-center gap-2"><Award size={18} className="text-fuchsia-500" /> Cơ cấu giải thưởng</h3><div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{currentData.prizes.map((item, index) => (<div key={index} className="p-4 bg-black border border-white/5 rounded-lg flex flex-col items-center text-center gap-2"><span className={`text-sm font-black uppercase ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : 'text-amber-700'}`}>{item.rank} Place</span><span className="flex items-center gap-2 text-fuchsia-400 font-bold">{item.reward}<Coins size={20} className="text-yellow-500" /> </span><span className='text-fuchsia-400 font-bold'>{item.special}</span></div>))}</div></div>
-                <div><h3 className="text-lg font-black text-white uppercase italic tracking-wider mb-4 flex items-center gap-2"><Swords size={18} className="text-fuchsia-500" /> Luật thi đấu</h3><ul className="space-y-3">{currentData.rules.map((rule, idx) => (<li key={idx} className="flex items-start gap-3 text-gray-400 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 mt-1.5 shrink-0" />{rule}</li>))}</ul></div>
+            {loading ? (
+              <div className="space-y-6">
+                <SkeletonBox className="h-6 w-48 mb-6" />
+                <div className="space-y-4">
+                  <SkeletonBox className="h-20 w-full" />
+                  <SkeletonBox className="h-20 w-full" />
+                  <SkeletonBox className="h-20 w-full" />
+                </div>
               </div>
-            )}
+            ) : (
+              <>
+                {activeTab === 'overview' && (
+                  <div className="space-y-8">
+                    <div><h3 className="text-lg font-black text-white uppercase italic tracking-wider mb-4 flex items-center gap-2"><Shield size={18} className="text-fuchsia-500" /> Giới thiệu</h3><p className="text-gray-400 leading-relaxed font-medium">{currentData.description}</p></div>
+                    <div><h3 className="text-lg font-black text-white uppercase italic tracking-wider mb-4 flex items-center gap-2"><Award size={18} className="text-fuchsia-500" /> Cơ cấu giải thưởng</h3><div className="grid grid-cols-1 sm:grid-cols-3 gap-4">{currentData.prizes.map((item, index) => (<div key={index} className="p-4 bg-black border border-white/5 rounded-lg flex flex-col items-center text-center gap-2"><span className={`text-sm font-black uppercase ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : 'text-amber-700'}`}>{item.rank} Place</span><span className="flex items-center gap-2 text-fuchsia-400 font-bold">{item.reward}<Coins size={20} className="text-yellow-500" /> </span><span className='text-fuchsia-400 font-bold'>{item.special}</span></div>))}</div></div>
+                    <div><h3 className="text-lg font-black text-white uppercase italic tracking-wider mb-4 flex items-center gap-2"><Swords size={18} className="text-fuchsia-500" /> Luật thi đấu</h3><ul className="space-y-3">{currentData.rules.map((rule, idx) => (<li key={idx} className="flex items-start gap-3 text-gray-400 text-sm"><div className="w-1.5 h-1.5 rounded-full bg-fuchsia-500 mt-1.5 shrink-0" />{rule}</li>))}</ul></div>
+                  </div>
+                )}
             
             {activeTab === 'bracket' && (
               <div className="space-y-8 py-4">
@@ -541,7 +599,7 @@ const TournamentDetailView = () => {
               </div>
             )}
             
-            {activeTab === 'teams' && (
+            {activeTab === 'clans' && (
               <div className="space-y-4" ref={dropdownRef}>
                 {registrations.length === 0 ? (<div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">Chưa có đội nào đăng ký</div>) : (
                     <div className="grid grid-cols-1 md:grid-cols-1 gap-4">{registrations.map((reg) => (<div key={reg.id} className="flex items-center justify-between p-4 bg-neutral-900 border border-white/5 rounded-lg group hover:border-fuchsia-500/30 transition-all"><div className="flex items-center gap-4"><div className="w-12 h-12 bg-neutral-800 rounded-full flex items-center justify-center border border-white/5 relative overflow-hidden"><div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent"></div><ClanIconDisplay iconName={reg.clans.icon || 'Shield'} color={reg.clans.color || '#d946ef'} className="w-6 h-6 transform group-hover:scale-110 transition-transform duration-300" /></div><div><div className="flex items-center gap-2"><span className="text-xs font-black text-fuchsia-500 uppercase tracking-wider px-1.5 py-0.5 bg-fuchsia-500/10 rounded border border-fuchsia-500/20">[{reg.clans.tag}]</span><h4 className="text-white font-bold leading-none">{reg.clans.name}</h4></div><div className="flex items-center gap-2 mt-1.5"><div className={`w-1.5 h-1.5 rounded-full ${['confirmed', 'approved'].includes(reg.status) ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div><span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{['confirmed', 'approved'].includes(reg.status) ? 'Đã xác nhận' : 'Đang chờ duyệt'}</span></div></div></div><div className="relative"><button onClick={(e) => toggleDropdown(reg.id, e)} className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors outline-none"><MoreVertical size={18} className="translate-y-[1px]" /></button>{openDropdownId === reg.id && (<div className="absolute right-0 top-full mt-2 w-48 bg-neutral-900 border border-white/10 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100 origin-top-right"><div className="p-1"><button onClick={() => handleViewClanDetails(reg.clan_id)} className="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors text-left"><Eye size={14} />Xem chi tiết Clan</button></div></div>)}</div></div>))}</div>
@@ -549,7 +607,9 @@ const TournamentDetailView = () => {
               </div>
             )}
 
-             {activeTab === 'matches' && (<div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">Các trận đấu sẽ xuất khi giải đấu bắt đầu.</div>)}
+             {activeTab === 'match' && (<div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">Các trận đấu sẽ xuất hiện khi giải đấu bắt đầu.</div>)}
+              </>
+            )}
           </div>
         </div>
 

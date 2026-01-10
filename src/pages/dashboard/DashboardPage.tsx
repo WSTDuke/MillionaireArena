@@ -231,7 +231,7 @@ const DashboardPage = () => {
 
         <div className="p-4 border-t border-white/5 relative" ref={userMenuRef}>
           {showUserMenu && (
-            <div className="absolute bottom-full left-4 right-4 mb-2 bg-neutral-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 animate-in slide-in-from-bottom-2 duration-200 z-50">
+            <div className="absolute bottom-full left-4 right-4 bg-neutral-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 animate-in slide-in-from-bottom-2 duration-200 z-50">
               <Link
                 to="/dashboard/profile"
                 className="flex items-center gap-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 transition-all"
@@ -261,27 +261,41 @@ const DashboardPage = () => {
 
           <button
             onClick={() => setShowUserMenu(!showUserMenu)}
-            className={`w-full flex items-center gap-3 p-2 rounded-2xl transition-all hover:bg-white/5 ${showUserMenu ? 'bg-white/5' : ''}`}
+            disabled={!profile}
+            className={`w-full flex items-center gap-3 p-2 rounded-2xl transition-all hover:bg-white/5 ${showUserMenu ? 'bg-white/5' : ''} ${!profile ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-tr from-fuchsia-600 to-purple-600 p-[1.5px] min-w-[40px]">
+            <div className="w-16 h-12 rounded-xl bg-gradient-to-tr from-fuchsia-600 to-purple-600 p-[1.5px] min-w-[40px]">
               <div className="w-full h-full rounded-xl bg-neutral-950 p-0.5">
-                <img
-                  src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"}
-                  alt="Avatar"
-                  className="w-full h-full rounded-lg object-cover"
-                />
+                {profile ? (
+                  <img
+                    src={profile?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=fallback"}
+                    alt="Avatar"
+                    className="w-full h-full rounded-lg object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-lg bg-neutral-800 animate-pulse" />
+                )}
               </div>
             </div>
-            <div className="hidden md:flex flex-col items-start overflow-hidden">
-              <span className="font-black text-sm uppercase tracking-widest text-white truncate w-full text-left">
-                {profile?.display_name || "Chiến Binh"}
-              </span>
-              <span
-                className="text-[9px] font-black uppercase tracking-tighter"
-                style={{ color: rankInfo.color }}
-              >
-                {rankInfo.tier} {rankInfo.division}
-              </span>
+            <div className="hidden md:flex flex-col items-start overflow-hidden w-full">
+              {profile ? (
+                <>
+                  <span className="font-black text-sm uppercase tracking-widest text-white truncate w-full text-left">
+                    {profile?.display_name || "Chiến Binh"}
+                  </span>
+                  <span
+                    className="text-[9px] font-black uppercase tracking-tighter"
+                    style={{ color: rankInfo.color }}
+                  >
+                    {rankInfo.tier} {rankInfo.division}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <div className="h-4 w-24 bg-neutral-800 rounded animate-pulse mb-1" />
+                  <div className="h-2 w-16 bg-neutral-800 rounded animate-pulse" />
+                </>
+              )}
             </div>
           </button>
         </div>
@@ -415,11 +429,15 @@ const DashboardPage = () => {
           </div>
 
           <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl transition-all group">
+            <div className="flex items-center gap-2 bg-neutral-900/50 border border-white/5 px-4 py-2 rounded-2xl transition-all group min-w-[120px]">
               <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 transition-all">
                 <Coins size={16} className="text-yellow-500" />
               </div>
-              <span className="font-black text-xs text-white tabular-nums">{profile?.balance?.toLocaleString() || 0}</span>
+              {profile ? (
+                <span className="font-black text-xs text-white tabular-nums">{profile?.balance?.toLocaleString() || 0}</span>
+              ) : (
+                <div className="h-4 w-12 bg-neutral-800 rounded animate-pulse" />
+              )}
               <Link to="/dashboard/payment" className="w-6 h-6 rounded-full bg-fuchsia-500 ml-4 hover:bg-fuchsia-400 flex items-center justify-center transition-all shadow-[0_0_15px_rgba(217,70,239,0.3)] hover:shadow-[0_0_25px_rgba(217,70,239,0.5)] active:scale-95 text-black">
                 <Plus size={12} strokeWidth={4} />
               </Link>

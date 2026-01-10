@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useOutletContext, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -72,7 +72,26 @@ const ClanView = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [activeTab, setActiveTab] = useState('find-clan');
+  // Use URL to determine active tab
+  const activeTab = useMemo(() => {
+    const parts = location.pathname.split('/');
+    const lastPart = parts[parts.length - 1];
+    
+    // If it's the base /clan or ends with clan, it's my-clan
+    if (lastPart === 'clan') return 'my-clan';
+    if (lastPart === 'explore') return 'explore';
+    
+    return 'my-clan';
+  }, [location.pathname]);
+
+  const setActiveTab = useCallback((tab: string) => {
+    if (tab === 'my-clan') {
+      navigate('/dashboard/clan');
+    } else {
+      navigate(`/dashboard/clan/${tab}`);
+    }
+  }, [navigate]);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -207,7 +226,6 @@ const ClanView = () => {
           }));
           setJoinRequests(enrichedRequests as MemberInfo[]);
           
-          setActiveTab('my-clan');
           // Final cache sync for my clan
           setDashboardCache((prev) => ({
             ...prev,
@@ -222,7 +240,6 @@ const ClanView = () => {
         setClanInfo(null);
         setMembers([]);
         setJoinRequests([]);
-        setActiveTab('find-clan');
         
         // Update cache for no clan
         setDashboardCache((prev) => ({
@@ -258,7 +275,7 @@ const ClanView = () => {
     }
     setLoading(false);
     return null;
-  }, [user?.id, fetchMembers, setDashboardCache]);
+   }, [user?.id, fetchMembers, setDashboardCache]);
 
 
   const handleViewClanDetails = useCallback(async (clanId: string) => {
@@ -363,8 +380,9 @@ const ClanView = () => {
          setProfile(prev => prev ? ({ ...prev, balance: result.new_balance }) : prev);
       }
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi tạo Clan. Vui lòng thử lại.';
       console.error('Error creating clan:', err);
-      handleShowToast(err.message || 'Lỗi khi tạo Clan. Vui lòng thử lại.', 'error');
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -447,8 +465,9 @@ const ClanView = () => {
       setUserClanStatus(prev => ({...prev, [clanId]: 'pending' }));
       handleShowToast('Đã gửi yêu cầu tham gia Clan!', 'success');
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi gửi yêu cầu tham gia Clan.';
       console.error('Error requesting to join clan:', err);
-      handleShowToast(err.message || 'Lỗi khi gửi yêu cầu tham gia Clan.', 'error');
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -466,8 +485,9 @@ const ClanView = () => {
         return newStatus;
       });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi hủy yêu cầu.';
       console.error('Error cancelling request:', err);
-      handleShowToast(err.message || 'Lỗi khi hủy yêu cầu.', 'error');
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -490,8 +510,9 @@ const ClanView = () => {
       handleShowToast('Đã duyệt thành viên mới!', 'success');
       // Realtime will update the lists
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi chấp nhận yêu cầu.';
       console.error('Error accepting request:', err);
-      handleShowToast(err.message || 'Lỗi khi chấp nhận yêu cầu.', 'error');
+      handleShowToast(errorMessage, 'error');
     }
   };
   
@@ -506,8 +527,9 @@ const ClanView = () => {
       handleShowToast('Đã từ chối yêu cầu.', 'info');
       // Realtime will update the lists
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi từ chối yêu cầu.';
       console.error('Error rejecting request:', err);
-      handleShowToast(err.message || 'Lỗi khi từ chối yêu cầu.', 'error');
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -533,12 +555,13 @@ const ClanView = () => {
       setClanInfo(null);
       setMembers([]);
       setJoinRequests([]);
-      setActiveTab('find-clan');
+      setActiveTab('explore');
       setShowLeaveConfirm(false);
       await fetchClanData(false); // Refetch recommended clans etc.
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi rời Clan.';
       console.error('Error leaving clan:', err);
-      handleShowToast(err.message || 'Lỗi khi rời Clan.', 'error');
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -575,7 +598,8 @@ const ClanView = () => {
       setTargetMember(null);
       handleShowToast('Đã xóa thành viên khỏi Clan.', 'info');
     } catch (err) {
-      handleShowToast('Lỗi khi xóa thành viên: ' + err.message, 'error');
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi xóa thành viên.';
+      handleShowToast(errorMessage, 'error');
       // Let realtime handle state correction on error
     }
   };
@@ -612,7 +636,8 @@ setShowPromoteConfirm(true);
       setTargetMember(null);
       handleShowToast('Đã phong trưởng nhóm mới thành công!', 'success');
     } catch (err) {
-      handleShowToast('Lỗi khi phong trưởng nhóm: ' + err.message, 'error');
+      const errorMessage = err instanceof Error ? err.message : 'Lỗi khi phong trưởng nhóm.';
+      handleShowToast(errorMessage, 'error');
     }
   };
 
@@ -681,10 +706,10 @@ setShowPromoteConfirm(true);
             Clan Của Tôi
           </button>
           <button 
-            onClick={() => setActiveTab('find-clan')}
-            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] relative transition-all ${activeTab === 'find-clan' ? 'text-fuchsia-500' : 'text-gray-500 hover:text-gray-300'}`}
+            onClick={() => setActiveTab('explore')}
+            className={`pb-4 text-[11px] font-black uppercase tracking-[0.2em] relative transition-all ${activeTab === 'explore' ? 'text-fuchsia-500' : 'text-gray-500 hover:text-gray-300'}`}
           >
-            {activeTab === 'find-clan' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
+            {activeTab === 'explore' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-fuchsia-500 shadow-[0_0_10px_#d946ef]" />}
             Khám Phá Clan
           </button>
         </div>
@@ -882,7 +907,7 @@ const MyClanSection = ({
     );
   }
   
-  const { icon: IconComponent } = CLAN_ICONS.find((item: any) => item.id === clanInfo.icon) || { icon: Shield };
+  const { icon: IconComponent } = CLAN_ICONS.find((item) => item.id === clanInfo.icon) || { icon: Shield };
   const colorObj = CLAN_COLORS.find(c => c.id === clanInfo.color) || CLAN_COLORS[0];
   const approvedMembers = members.filter(m => m.status === 'approved');
 

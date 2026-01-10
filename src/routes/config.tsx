@@ -75,10 +75,21 @@ export const routes = [
       {
         path: "tournaments/:id",
         element: TournamentDetailView,
+        children: [
+          { path: "", element: () => null },
+          { path: "overview", element: () => null },
+          { path: "bracket", element: () => null },
+          { path: "clans", element: () => null },
+          { path: "match", element: () => null },
+        ]
       },
       {
         path: "clan", 
         element: ClanView,
+        children: [
+          { path: "", element: () => null }, // Default handled by parent logic
+          { path: "explore", element: () => null },
+        ]
       },
       {
         path: "ranking", 
