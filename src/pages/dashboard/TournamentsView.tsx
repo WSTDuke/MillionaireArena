@@ -3,6 +3,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Trophy, Calendar, Users, Filter, Search, ArrowRight, Coins } from 'lucide-react';
 import { TournamentsPageSkeleton } from '../../components/LoadingSkeletons';
 import { supabase } from '../../lib/supabase';
+import { TOURNAMENT_CONFIG } from '../../lib/constants';
 
 interface TournamentData {
   id: string;
@@ -74,16 +75,16 @@ const TournamentsView = () => {
         if (regError) console.error('Error fetching fallback counts:', regError);
 
         setTournaments([{
-          id: 'community-weekly-cup-42',
-          title: 'Community Weekly Cup #42',
-          status: 'Đang diễn ra',
-          prize_pool: '1000',
-          entry_fee: 0,
-          max_participants: 16,
-          start_date: '05 Jan, 2025',
-          end_date: '10 Jan, 2025',
-          tournament_type: 'SOLO 5v5',
-          image_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop',
+          id: TOURNAMENT_CONFIG.ID,
+          title: TOURNAMENT_CONFIG.TITLE,
+          status: 'Sắp diễn ra', // Changed to Sắp diễn ra since it starts at 11:55 PM
+          prize_pool: TOURNAMENT_CONFIG.PRIZE_POOL,
+          entry_fee: TOURNAMENT_CONFIG.ENTRY_FEE,
+          max_participants: TOURNAMENT_CONFIG.MAX_PARTICIPANTS,
+          start_date: TOURNAMENT_CONFIG.DISPLAY_DATE,
+          end_date: '15 Jan, 2026',
+          tournament_type: TOURNAMENT_CONFIG.TYPE,
+          image_url: TOURNAMENT_CONFIG.IMAGE,
           description: 'Giải đấu hàng tuần cho cộng đồng.',
           registration_count: count || 0
         }]);

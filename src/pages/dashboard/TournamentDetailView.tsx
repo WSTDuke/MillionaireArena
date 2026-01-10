@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useOutletContext, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { 
   Trophy, 
@@ -15,11 +15,26 @@ import {
   ChevronRight,
   Coins,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Aperture,
+  Zap
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { TOURNAMENT_CONFIG } from '../../lib/constants';
 import Toast, { type ToastType } from '../../components/Toast';
 import { CLAN_ICONS } from './clanConstants';
+
+// --- Phases ---
+type TournamentPhase = 'waiting' | 'shuffling' | 'preparation' | 'live';
+
+interface Match {
+  id: string;
+  clan1: ClanInfo | null;
+  clan2: ClanInfo | null;
+  round: number;
+  order: number;
+  scheduledTime: string; // ISO string
+}
 
 // --- Icon Component Helper ---
 const ClanIconDisplay = ({ iconName, color, className = "w-6 h-6" }: { iconName: string, color: string, className?: string }) => {
@@ -90,6 +105,11 @@ const TournamentDetailView = () => {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorType, setErrorType] = useState<'role' | 'no-clan' | 'member-count' | null>(null);
 
+  // Tournament Timing & Bracket State
+  const [phase, setPhase] = useState<TournamentPhase>('waiting');
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+
   // Dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -98,17 +118,17 @@ const TournamentDetailView = () => {
   const clanInfo = dashboardCache.clanInfo;
 
   // Fallback/Mock data if DB is empty or during transition
-  const defaultTournament: Tournament = {
-    id: id || 'community-weekly-cup-42',
-    title: 'Community Weekly Cup #42',
-    status: 'Đang diễn ra',
-    prize_pool: '10.000',
-    max_participants: 16,
-    start_date: '05 Jan, 2025',
-    end_date: '10 Jan, 2025',
-    tournament_type: 'SOLO 5v5',
-    entry_fee: 500,
-    image_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop',
+  const defaultTournament: Tournament = useMemo(() => ({
+    id: TOURNAMENT_CONFIG.ID,
+    title: TOURNAMENT_CONFIG.TITLE,
+    status: 'Sắp diễn ra',
+    start_date: TOURNAMENT_CONFIG.DISPLAY_DATE,
+    end_date: '15 Jan, 2026',
+    tournament_type: TOURNAMENT_CONFIG.TYPE,
+    prize_pool: TOURNAMENT_CONFIG.PRIZE_POOL,
+    max_participants: TOURNAMENT_CONFIG.MAX_PARTICIPANTS,
+    entry_fee: TOURNAMENT_CONFIG.ENTRY_FEE,
+    image_url: TOURNAMENT_CONFIG.IMAGE,
     description: 'Giải đấu thường niên dành cho cộng đồng MillionMind. Nơi quy tụ những cao thủ hàng đầu để tranh tài và giành lấy vinh quang.',
     rules: [
       'Thi đấu theo thể thức loại trực tiếp (Single Elimination).',
@@ -121,7 +141,7 @@ const TournamentDetailView = () => {
       { rank: '2nd', reward: '3.000 ' },
       { rank: '3rd-4th', reward: '1.000 ' }
     ]
-  };
+  }), []);
 
   const fetchTournamentData = useCallback(async () => {
     if (!id) return;
@@ -163,13 +183,128 @@ const TournamentDetailView = () => {
             const isReg = formattedRegs?.some(r => r.clan_id === clanInfo.id && ['confirmed', 'approved'].includes(r.status));
             setIsRegistered(!!isReg);
         }
-
+        setLoading(false);
     } catch (err) {
-        console.error("Error fetching tournament data:", err);
-    } finally {
+        console.error('Error in fetchTournamentData:', err);
         setLoading(false);
     }
-  }, [id, clanInfo?.id]);
+  }, [id, clanInfo?.id, defaultTournament]); // Added defaultTournament to dependencies
+
+  // Phase & Bracket Management Logic
+  useEffect(() => {
+    const updatePhase = () => {
+      const now = new Date().getTime();
+      const startTime = new Date(TOURNAMENT_CONFIG.START_TIME).getTime();
+      const shuffleEndTime = startTime + 60 * 1000; // 1 min shuffle
+      const prepEndTime = shuffleEndTime + 5 * 60 * 1000; // 5 min prep
+
+      if (now < startTime) {
+        setPhase('waiting');
+        setTimeLeft(Math.floor((startTime - now) / 1000));
+      } else if (now < shuffleEndTime) {
+        setPhase('shuffling');
+        setTimeLeft(Math.floor((shuffleEndTime - now) / 1000));
+      } else if (now < prepEndTime) {
+        setPhase('preparation');
+        setTimeLeft(Math.floor((prepEndTime - now) / 1000));
+      } else {
+        setPhase('live');
+        setTimeLeft(0);
+      }
+    };
+
+    updatePhase();
+    const timer = setInterval(updatePhase, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Generate Bracket when shuffling or preparation starts
+  useEffect(() => {
+    if ((phase === 'shuffling' || phase === 'preparation' || phase === 'live') && registrations.length > 0 && matches.length === 0) {
+      // Use START_TIME in the key to force re-randomization if time changes
+      const storageKey = `bracket_${id}_${TOURNAMENT_CONFIG.START_TIME}`;
+      const savedBracket = localStorage.getItem(storageKey);
+
+      if (savedBracket) {
+        setMatches(JSON.parse(savedBracket));
+      } else {
+        const N = registrations.length;
+        if (N === 0) return;
+
+        const P = Math.pow(2, Math.ceil(Math.log2(N))); // Nearest power of 2 (e.g., 16)
+        const B = P - N; // Number of BYEs
+        
+        const shuffled = [...registrations].sort(() => Math.random() - 0.5);
+        const newMatches: Match[] = [];
+        const baseStartTime = new Date(new Date(TOURNAMENT_CONFIG.START_TIME).getTime() + 6 * 60000);
+        let globalMatchIdx = 0;
+
+        // Helper to get time
+        const getNextTime = () => {
+          const time = new Date(baseStartTime.getTime() + globalMatchIdx * 60 * 60000);
+          globalMatchIdx++;
+          return time.toISOString();
+        };
+
+        // --- ROUND 1 ---
+        const r1Count = P / 2;
+        let teamsIndex = 0;
+        let byesDistributed = 0;
+
+        for (let i = 0; i < r1Count; i++) {
+          let clan1: ClanInfo | null = null;
+          let clan2: ClanInfo | null = null;
+
+          clan1 = shuffled[teamsIndex]?.clans || null;
+          teamsIndex++;
+
+          if (byesDistributed < B) {
+            clan2 = null; 
+            byesDistributed++;
+          } else {
+            clan2 = shuffled[teamsIndex]?.clans || null;
+            teamsIndex++;
+          }
+
+          newMatches.push({
+            id: `r1-m${i}`,
+            clan1,
+            clan2,
+            round: 1,
+            order: i,
+            scheduledTime: getNextTime()
+          });
+        }
+
+        // --- SUBSEQUENT ROUNDS ---
+        let currentRoundCount = r1Count / 2;
+        let roundNum = 2;
+        while (currentRoundCount >= 1) {
+          for (let i = 0; i < currentRoundCount; i++) {
+            newMatches.push({
+              id: `r${roundNum}-m${i}`,
+              clan1: null,
+              clan2: null,
+              round: roundNum,
+              order: i,
+              scheduledTime: getNextTime()
+            });
+          }
+          currentRoundCount /= 2;
+          roundNum++;
+        }
+        
+        localStorage.setItem(storageKey, JSON.stringify(newMatches));
+        setMatches(newMatches);
+      }
+    } else if (matches.length > 0) {
+      // Clear matches if start time changed and current matches don't match the key
+      const currentKey = `bracket_${id}_${TOURNAMENT_CONFIG.START_TIME}`;
+      if (!localStorage.getItem(currentKey)) {
+          setMatches([]);
+      }
+    }
+  }, [phase, registrations, id, matches.length, registrations.length]);
 
 
   useEffect(() => {
@@ -261,11 +396,12 @@ const TournamentDetailView = () => {
       // REFRESH DATA to update participants count
       await fetchTournamentData();
 
-    } catch (err: any) {
-      console.error('Registration error:', err);
+    } catch (err) {
+      const error = err as Error;
+      console.error('Registration error:', error);
       // Show error toast or modal update
       setToast({
-        message: err.message || "Đăng ký thất bại. Vui lòng thử lại.",
+        message: error.message || "Đăng ký thất bại. Vui lòng thử lại.",
         type: 'error'
       });
       setShowConfirmModal(false);
@@ -446,8 +582,180 @@ const TournamentDetailView = () => {
             )}
             
             {activeTab === 'bracket' && (
-              <div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">
-                   Các nhánh đấu sẽ xuát hiện khi giải đấu bắt đầu.
+              <div className="space-y-8 py-4">
+                {phase === 'waiting' && (
+                  <div className="flex flex-col items-center justify-center h-80 border border-white/5 bg-black/40 rounded-2xl relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-dot-pattern opacity-5" />
+                    <div className="p-6 bg-fuchsia-500/10 rounded-full mb-6 relative">
+                       <Aperture size={48} className="text-fuchsia-500/30 animate-pulse" />
+                       <div className="absolute inset-0 border-2 border-fuchsia-500/20 rounded-full animate-ping" />
+                    </div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-tighter italic mb-2">Nhánh đấu sẵn sàng</h3>
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-widest text-center max-w-xs">
+                      Các nhánh đấu sẽ được ghép ngẫu nhiên vào lúc <span className="text-fuchsia-500">{TOURNAMENT_CONFIG.DISPLAY_TIME}</span>
+                    </p>
+                    <div className="mt-8 px-6 py-2 bg-neutral-900 border border-white/5 text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+                       Trạng thái: Đang chờ khởi tranh
+                    </div>
+                  </div>
+                )}
+
+                {phase === 'shuffling' && (
+                  <div className="flex flex-col items-center justify-center h-[400px] border border-fuchsia-500/20 bg-fuchsia-950/5 rounded-2xl relative overflow-hidden">
+                    <div className="absolute inset-0 bg-scanline-fast opacity-10" />
+                    <div className="relative z-10 flex flex-col items-center">
+                       <div className="w-24 h-24 relative mb-8">
+                          <Loader2 size={96} className="text-fuchsia-500 animate-spin opacity-50 absolute inset-0" />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                             <Trophy size={32} className="text-white animate-bounce" />
+                          </div>
+                       </div>
+                       <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter mb-4 animate-pulse">
+                         Đang xáo trộn bắt cặp...
+                       </h3>
+                       <div className="flex gap-2">
+                          {[1, 2, 3].map(i => (
+                             <div key={i} className="w-2 h-2 bg-fuchsia-500 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.2}s` }} />
+                          ))}
+                       </div>
+                       <p className="mt-8 text-[10px] font-black text-fuchsia-500 uppercase tracking-[0.3em] italic">Vui lòng chờ trong {timeLeft} giây</p>
+                    </div>
+                  </div>
+                )}
+
+                {(phase === 'preparation' || phase === 'live') && (
+                  <div className="animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                    {phase === 'preparation' && (
+                       <div className="mb-8 p-4 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-xl flex items-center justify-between shadow-[0_0_20px_rgba(192,38,211,0.1)]">
+                          <div className="flex items-center gap-4">
+                             <div className="p-3 bg-fuchsia-600/20 rounded-lg">
+                                <Zap className="text-fuchsia-500 animate-pulse" size={24} />
+                             </div>
+                             <div>
+                                <span className="text-[10px] font-black text-fuchsia-500 uppercase tracking-[0.2em] block mb-0.5">// Giai đoạn chuẩn bị</span>
+                                <h4 className="text-sm font-black text-white uppercase italic tracking-tight">Xác nhận cặp đấu - Kiểm tra trang bị</h4>
+                             </div>
+                          </div>
+                          <div className="text-right">
+                             <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1">Bắt đầu sau</span>
+                             <div className="flex items-center gap-1.5 justify-end">
+                                <div className="text-2xl font-black text-white tabular-nums italic">
+                                   {Math.floor(timeLeft / 60).toString().padStart(2, '0')}
+                                </div>
+                                <span className="text-fuchsia-600 font-bold">:</span>
+                                <div className="text-2xl font-black text-white tabular-nums italic">
+                                   {(timeLeft % 60).toString().padStart(2, '0')}
+                                </div>
+                             </div>
+                          </div>
+                       </div>
+                    )}
+
+                    <div className="overflow-x-auto pb-12 scrollbar-hide relative">
+                       {/* Background Grid for Bracket */}
+                       <div className="absolute inset-0 opacity-10 tech-grid pointer-events-none" />
+                       
+                       <div className="flex px-8 py-20 w-max min-h-[900px] relative">
+                          {Array.from({ length: Math.log2(Math.pow(2, Math.ceil(Math.log2(registrations.length || 16)))) }, (_, i) => i + 1).map((round) => {
+                             const totalRounds = Math.log2(Math.pow(2, Math.ceil(Math.log2(registrations.length || 16))));
+                             const roundMatches = matches.filter(m => m.round === round);
+                             
+                             // Calculate dynamic gap/height for lines based on round
+                             // Round 1 gap is 24 (96px). Round 2 gap is double that, etc.
+                             const baseGap = 24; 
+                             const verticalLineOffset = `calc(50% + ${4 + (Math.pow(2, round - 1) * 2)}rem)`;
+
+                             return (
+                                <div key={round} className="bracket-column" style={{ gap: `${Math.pow(2, round - 1) * baseGap}px` }}>
+                                   <div className="text-center absolute top-[-40px] left-0 right-0 z-20">
+                                      <div className="inline-block px-5 py-2 bg-neutral-950/80 backdrop-blur-md border border-white/10 rounded-full shadow-2xl">
+                                         <span className="text-[10px] font-black text-fuchsia-500 uppercase tracking-[0.3em] glow-text">
+                                            {round === totalRounds ? 'Chung kết' : round === totalRounds - 1 ? 'Bán kết' : round === totalRounds - 2 ? 'Tứ kết' : `Vòng ${round}`}
+                                         </span>
+                                      </div>
+                                   </div>
+                                   
+                                   {roundMatches.map((match) => {
+                                      const matchDate = new Date(match.scheduledTime);
+                                      const matchTimeStr = matchDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                                      const now = new Date();
+                                      const matchEnd = new Date(matchDate.getTime() + 30 * 60000);
+                                      const isLive = now >= matchDate && now < matchEnd;
+
+                                      return (
+                                        <div key={match.id} className="match-card-v3">
+                                           {/* Time Badge */}
+                                           <div className="match-time-badge">
+                                              <Clock size={10} className="text-fuchsia-500" />
+                                              <span>{matchTimeStr}</span>
+                                              {isLive && <span className="w-1.5 h-1.5 bg-fuchsia-500 rounded-full animate-ping ml-1" />}
+                                           </div>
+
+                                           <div className={`match-box-pro ${isLive ? 'border-fuchsia-500 shadow-[0_0_30px_rgba(192,38,211,0.3)] ring-1 ring-fuchsia-500/50' : 'border-white/10'}`}>
+                                              {/* Team 1 */}
+                                              <div className="match-team-row">
+                                                 <div className="match-team-icon">
+                                                    {match.clan1 ? (
+                                                      <ClanIconDisplay iconName={match.clan1.icon || 'Shield'} color={match.clan1.color || '#fff'} className="w-5 h-5" />
+                                                    ) : (
+                                                      <Users size={18} className="text-neutral-800" />
+                                                    )}
+                                                 </div>
+                                                 <span className={`match-team-name ${match.clan1 ? 'text-white' : 'text-neutral-800'}`}>
+                                                    {match.clan1?.name || 'TBD'}
+                                                 </span>
+                                              </div>
+
+                                              {/* Team 2 */}
+                                              <div className="match-team-row">
+                                                 <div className="match-team-icon">
+                                                    {match.clan2 ? (
+                                                      <ClanIconDisplay iconName={match.clan2.icon || 'Shield'} color={match.clan2.color || '#fff'} className="w-5 h-5" />
+                                                    ) : match.round === 1 && match.clan1 ? (
+                                                      <Zap size={18} className="text-fuchsia-500/40" />
+                                                    ) : (
+                                                      <Users size={18} className="text-neutral-800" />
+                                                    )}
+                                                 </div>
+                                                 <span className={`match-team-name ${match.clan2 ? 'text-white' : match.round === 1 && match.clan1 ? 'text-fuchsia-500/40 italic' : 'text-neutral-800'}`}>
+                                                    {match.clan2?.name || (match.round === 1 && match.clan1 ? 'BYE (Đặc cách)' : 'TBD')}
+                                                 </span>
+                                              </div>
+
+                                              {/* BO5 Label */}
+                                              <div className="match-bo5-label">BO5</div>
+                                           </div>
+
+                                           {/* Bracket Lines */}
+                                           {round < totalRounds && (
+                                              <>
+                                                 <div className="match-connector-line !bg-fuchsia-500/60" />
+                                                 <div 
+                                                   className="bracket-vertical-line !bg-fuchsia-500/60" 
+                                                   style={{ 
+                                                      height: verticalLineOffset,
+                                                      top: match.order % 2 === 0 ? '50%' : 'auto',
+                                                      bottom: match.order % 2 !== 0 ? '50%' : 'auto'
+                                                   }} 
+                                                 />
+                                                 {match.order % 2 === 0 && (
+                                                    <div 
+                                                      className="bracket-line-meeting !bg-fuchsia-500/60" 
+                                                      style={{ top: verticalLineOffset }} 
+                                                    />
+                                                 )}
+                                              </>
+                                           )}
+                                        </div>
+                                      );
+                                   })}
+                                </div>
+                             );
+                          })}
+                       </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -543,7 +851,10 @@ const TournamentDetailView = () => {
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-gray-500 font-bold">Ngày kết thúc đăng ký</span>
-                  <span className="text-white font-black text-right">04 Jan, 2025<br/><span className="text-[10px] text-fuchsia-500">23:59 GMT+7</span></span>
+                  <div className="text-right">
+                    <div className="text-white font-black">{TOURNAMENT_CONFIG.REG_END_DATE}</div>
+                    <div className="text-[10px] text-fuchsia-500 font-bold">{TOURNAMENT_CONFIG.REG_END_TIME} GMT+7</div>
+                  </div>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-gray-500 font-bold">Chế độ</span>
