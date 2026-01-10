@@ -40,8 +40,8 @@ DECLARE
 BEGIN
     -- 1. Ensure Tournament Exists
     INSERT INTO public.tournaments (id, title, description, entry_fee, max_participants, status, image_url, start_date)
-    VALUES (v_tournament_id, 'Community Weekly Cup #42', 'Giải đấu thường niên dành cho cộng đồng MillionMind.', 0, 16, 'Sắp diễn ra', 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop', '2026-01-11 00:35:00+07')
-    ON CONFLICT (id) DO UPDATE SET status = 'Sắp diễn ra', start_date = '2026-01-11 00:35:00+07', entry_fee = 0;
+    VALUES (v_tournament_id, 'Community Weekly Cup #42', 'Giải đấu thường niên dành cho cộng đồng MillionMind.', 0, 16, 'Sắp diễn ra', 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop', '2026-01-11 01:13:00+07')
+    ON CONFLICT (id) DO UPDATE SET status = 'Sắp diễn ra', start_date = '2026-01-11 01:13:00+07', entry_fee = 0;
 
     FOR i IN 1..8 LOOP
         -- 1. Create/Get Leader Auth User
