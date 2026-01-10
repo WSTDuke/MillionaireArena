@@ -13,6 +13,7 @@ import ClanView from "../pages/dashboard/ClanView"
 import Home from "../pages/home/HomePage"
 import RankingView from "../pages/dashboard/RankingView"
 import PaymentView from "../pages/dashboard/PaymentView"
+import NotFoundPage from "../pages/error/NotFoundPage"
 import { ProtectedRoute, GuestRoute } from "../components/auth/AuthGuard"
 
 export const routes = [
@@ -104,5 +105,9 @@ export const routes = [
   {
     path: "/gameplay",
     element: GamePlayView,
+  },
+  {
+    path: "*",
+    element: NotFoundPage,
   },
 ]
