@@ -1,0 +1,1 @@
+DO d:\Project\MillionMindArena\supabase DECLARE col record; BEGIN FOR col IN SELECT column_name FROM information_schema.columns WHERE table_name = 'tournament_registrations' LOOP RAISE NOTICE 'Column: %', col.column_name; END LOOP; END d:\Project\MillionMindArena\supabase;

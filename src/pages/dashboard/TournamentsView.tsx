@@ -1,7 +1,23 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Trophy, Calendar, Users, Filter, Search, ArrowRight, Coins } from 'lucide-react';
 import { TournamentsPageSkeleton } from '../../components/LoadingSkeletons';
+import { supabase } from '../../lib/supabase';
+
+interface TournamentData {
+  id: string;
+  title: string;
+  status: string;
+  prize_pool: string;
+  entry_fee: number;
+  max_participants: number;
+  start_date: string;
+  end_date: string;
+  tournament_type: string;
+  image_url: string;
+  description: string;
+  registration_count: number;
+}
 
 // Define the type for the dashboard cache
 type DashboardCacheType = {
@@ -20,19 +36,69 @@ const TournamentsView = () => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(!dashboardCache.tournamentsLoaded);
-  
-  // 2. Khởi tạo Ref để đánh dấu vị trí muốn trượt tới
   const tabsSectionRef = useRef<HTMLDivElement>(null);
+  const [tournaments, setTournaments] = useState<TournamentData[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const fetchTournamentsData = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Fetch tournaments
+      const { data: tournamentData, error: tError } = await supabase
+        .from('tournaments')
+        .select(`
+          *,
+          tournament_registrations (count)
+        `);
+
+      if (tError) {
+        console.warn('Tournaments table might not exist yet, using fallback:', tError);
+      }
+
+      if (tournamentData && tournamentData.length > 0) {
+        const formattedData = tournamentData.map(t => ({
+          ...t,
+          registration_count: t.tournament_registrations?.[0]?.count || 0,
+          prize_pool: t.prize_pool || "1000", // Fallback if column missing
+          tournament_type: t.tournament_type || "SOLO 5v5" // Fallback if column missing
+        })) as TournamentData[];
+        setTournaments(formattedData);
+      } else {
+        // Fallback: If no tournaments in DB, show the default one but fetch ITS real counts
+        const { count, error: regError } = await supabase
+          .from('tournament_registrations')
+          .select('*', { count: 'exact', head: true })
+          .eq('tournament_id', 'community-weekly-cup-42');
+        
+        if (regError) console.error('Error fetching fallback counts:', regError);
+
+        setTournaments([{
+          id: 'community-weekly-cup-42',
+          title: 'Community Weekly Cup #42',
+          status: 'Đang diễn ra',
+          prize_pool: '1000',
+          entry_fee: 0,
+          max_participants: 16,
+          start_date: '05 Jan, 2025',
+          end_date: '10 Jan, 2025',
+          tournament_type: 'SOLO 5v5',
+          image_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop',
+          description: 'Giải đấu hàng tuần cho cộng đồng.',
+          registration_count: count || 0
+        }]);
+      }
+    } catch (err) {
+      console.error('Error in fetchTournamentsData:', err);
+    } finally {
+      setLoading(false);
+      setDashboardCache((prev: DashboardCacheType) => ({ ...prev, tournamentsLoaded: true }));
+    }
+  }, [setDashboardCache]);
 
   useEffect(() => {
-    if (!dashboardCache.tournamentsLoaded) {
-      const timer = setTimeout(() => {
-        setLoading(false);
-        setDashboardCache((prev: DashboardCacheType) => ({ ...prev, tournamentsLoaded: true }));
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [dashboardCache.tournamentsLoaded, setDashboardCache]);
+    fetchTournamentsData();
+  }, [fetchTournamentsData]);
 
   // 3. Hàm xử lý hiệu ứng trượt
   const handleScrollToTabs = () => {
@@ -145,6 +211,8 @@ const TournamentsView = () => {
              type="text" 
              placeholder="QUÉT TÌM GIẢI ĐẤU [DATABASE]..." 
              className="bg-transparent border-none outline-none text-[11px] font-black tracking-[0.2em] ml-4 w-full text-white placeholder-gray-700 uppercase" 
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
            />
            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-fuchsia-500/30" />
            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-fuchsia-500/30" />
@@ -173,17 +241,32 @@ const TournamentsView = () => {
 
       {/* Tournament List - Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-        <TournamentCard 
-          image="https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"
-          title="Community Weekly Cup #42"
-          date="05 Jan, 2025"
-          prize="1000"
-          participants="16/16"
-          status="Đang diễn ra"
-          type="SOLO 5v5"
-          entryFee="miễn phí"
-          onClick={() => navigate('community-weekly-cup-42')}
-        />
+        {tournaments
+          .filter(t => {
+            if (filter !== 'all' && t.status !== (filter === 'upcoming' ? 'Sắp diễn ra' : filter === 'ongoing' ? 'Đang diễn ra' : 'Đã kết thúc')) return false;
+            if (searchTerm && !t.title.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            return true;
+          })
+          .map((t) => (
+          <TournamentCard 
+            key={t.id}
+            image={t.image_url || "https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2070&auto=format&fit=crop"}
+            title={t.title}
+            date={t.start_date}
+            prize={t.prize_pool}
+            participants={`${t.registration_count}/${t.max_participants}`}
+            status={t.status}
+            type={t.tournament_type}
+            entryFee={t.entry_fee === 0 ? "miễn phí" : `${t.entry_fee} Gold`}
+            onClick={() => navigate(t.id)}
+          />
+        ))}
+        {tournaments.length === 0 && !loading && (
+          <div className="col-span-full py-20 bg-neutral-900/50 border border-white/5 rounded-xl flex flex-col items-center justify-center text-center">
+            <Trophy size={48} className="text-gray-800 mb-4" />
+            <span className="text-sm font-black text-gray-600 uppercase tracking-widest">Không tìm thấy giải đấu nào</span>
+          </div>
+        )}
       </div>
 
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useOutletContext, useNavigate, useParams } from 'react-router-dom';
+import { useOutletContext, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { 
   Trophy, 
   Calendar, 
@@ -38,6 +38,7 @@ interface ClanInfo {
   avatar_url?: string;
   icon?: string;
   color?: string;
+  members_count?: number;
 }
 
 interface DashboardContext {
@@ -74,8 +75,9 @@ interface TournamentRegistration {
 const TournamentDetailView = () => {
   const { dashboardCache } = useOutletContext<DashboardContext>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>(); // Get ID from URL
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(location.state?.returnTab || 'overview');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const [tournament, setTournament] = useState<Tournament | null>(null);
@@ -86,7 +88,7 @@ const TournamentDetailView = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [toast, setToast] = useState<{ message: React.ReactNode, type: ToastType } | null>(null);
   const [showErrorModal, setShowErrorModal] = useState(false);
-  const [errorType, setErrorType] = useState<'role' | 'no-clan' | null>(null);
+  const [errorType, setErrorType] = useState<'role' | 'no-clan' | 'member-count' | null>(null);
 
   // Dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
@@ -158,8 +160,7 @@ const TournamentDetailView = () => {
 
         // 3. Check if current user's clan is registered
         if (clanInfo?.id) {
-            // Note: Use a type guard or check if formattedRegs is defined
-            const isReg = formattedRegs?.some(r => r.clan_id === clanInfo.id);
+            const isReg = formattedRegs?.some(r => r.clan_id === clanInfo.id && ['confirmed', 'approved'].includes(r.status));
             setIsRegistered(!!isReg);
         }
 
@@ -215,7 +216,14 @@ const TournamentDetailView = () => {
       return;
     }
 
-    // 3. Show confirm modal
+    // 3. Check if clan has 5 members
+    if ((clanInfo.members_count || 0) < 5) {
+      setErrorType('member-count');
+      setShowErrorModal(true);
+      return;
+    }
+
+    // 4. Show confirm modal
     setShowConfirmModal(true);
   };
 
@@ -277,7 +285,12 @@ const TournamentDetailView = () => {
   };
 
   const handleViewClanDetails = (clanId: string) => {
-      navigate(`/dashboard/clan?id=${clanId}`); 
+      navigate(`/dashboard/clan?id=${clanId}`, { 
+        state: { 
+          returnTo: location.pathname, 
+          returnTab: 'teams' 
+        } 
+      }); 
   };
 
   if (loading && !tournament) {
@@ -434,7 +447,7 @@ const TournamentDetailView = () => {
             
             {activeTab === 'bracket' && (
               <div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">
-                Bracket Display Coming Soon
+                   Các nhánh đấu sẽ xuát hiện khi giải đấu bắt đầu.
               </div>
             )}
 
@@ -466,9 +479,9 @@ const TournamentDetailView = () => {
                                         </div>
      
                                         <div className="flex items-center gap-2 mt-1.5">
-                                            <div className={`w-1.5 h-1.5 rounded-full ${reg.status === 'confirmed' ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${['confirmed', 'approved'].includes(reg.status) ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div>
                                             <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-                                                {reg.status === 'confirmed' ? 'Đã xác nhận' : 'Đang chờ duyệt'}
+                                                {['confirmed', 'approved'].includes(reg.status) ? 'Đã xác nhận' : 'Đang chờ duyệt'}
                                             </span>
                                         </div>
                                     </div>
@@ -507,7 +520,7 @@ const TournamentDetailView = () => {
 
              {activeTab === 'matches' && (
               <div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">
-                Matches Schedule Coming Soon
+                Các trận đấu sẽ xuất khi giải đấu bắt đầu.
               </div>
             )}
           </div>
@@ -635,16 +648,22 @@ const TournamentDetailView = () => {
                     <AlertTriangle size={40} className="text-red-500" />
                  </div>
                  
-                 <div className="space-y-2">
+                  <div className="space-y-2">
                    <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">
-                     {errorType === 'role' ? 'Quyền hạn bị từ chối' : 'Chưa tham gia Clan'}
+                     {errorType === 'role' 
+                        ? 'Quyền hạn bị từ chối' 
+                        : errorType === 'no-clan' 
+                           ? 'Chưa tham gia Clan' 
+                           : 'Số lượng thành viên không đủ'}
                    </h3>
                    <p className="text-gray-400 text-sm font-bold leading-relaxed px-2">
                      {errorType === 'role' 
                         ? 'Chỉ Trưởng Clan (Leader) mới có quyền đăng ký tham gia giải đấu này.' 
-                        : 'Bạn cần gia nhập hoặc tạo một Clan để tham gia giải đấu.'}
+                        : errorType === 'no-clan'
+                           ? 'Bạn cần gia nhập hoặc tạo một Clan để tham gia giải đấu.'
+                           : 'Clan của bạn cần có đủ 5 thành viên để đăng ký tham gia giải đấu này.'}
                    </p>
-                   {errorType === 'role' && (
+                   {errorType !== 'member-count' && (
                      <p className="text-xs text-red-400 font-bold mt-2">
                         Việc vắng mặt khi đã đăng ký sẽ bị xử thua.
                      </p>

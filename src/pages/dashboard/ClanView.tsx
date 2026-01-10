@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useOutletContext, useSearchParams, useNavigate } from 'react-router-dom';
+import { useOutletContext, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { 
   Trophy, Target, 
@@ -69,6 +69,8 @@ interface DashboardContext {
 const ClanView = () => {
   const { user, profile, setProfile, dashboardCache, setDashboardCache } = useOutletContext<DashboardContext>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [activeTab, setActiveTab] = useState('find-clan');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -289,6 +291,10 @@ const ClanView = () => {
 
 
   const handleBackToList = () => {
+    if (location.state?.returnTo) {
+      navigate(location.state.returnTo);
+      return;
+    }
     setViewingClan(null);
     setViewingMembers([]);
     setSearchParams({}); // Clear query params on back
@@ -419,10 +425,19 @@ const ClanView = () => {
 
   const handleRequestToJoinClan = async (clanId: string) => {
     if (!user?.id || clanInfo) return; // Already in a clan
+    
     if (userClanStatus[clanId] === 'pending') {
       handleShowToast('Yêu cầu đã được gửi. Vui lòng chờ trưởng nhóm xét duyệt.', 'info');
       return;
     }
+
+    // Check if clan is full before sending request
+    const targetClan = recommendedClans.find(c => c.id === clanId);
+    if (targetClan && targetClan.members_count >= 5) {
+      handleShowToast('Clan này đã đủ 5 thành viên. Bạn không thể xin tham gia lúc này.', 'error');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('clan_members')
@@ -458,6 +473,14 @@ const ClanView = () => {
 
   const handleAcceptRequest = async (request: MemberInfo) => {
     if (clanInfo?.role !== 'leader') return;
+    
+    // Check if already reached limit
+    const approvedCount = members.filter(m => m.status === 'approved').length;
+    if (approvedCount >= 5) {
+      handleShowToast('Clan đã đạt tối đa 5 thành viên. Bạn không thể duyệt thêm.', 'error');
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('clan_members')
@@ -676,7 +699,7 @@ setShowPromoteConfirm(true);
             <div className="p-2 bg-neutral-900 border border-white/10 rounded-xl group-hover:border-white/20 transition-all shadow-xl">
               <LogOut className="rotate-180 w-5 h-5" />
             </div>
-            <span className="font-bold text-lg">Quay lại danh sách Clan</span>
+            <span className="font-bold text-lg">Quay lại</span>
           </button>
 
           {viewingLoading ? (
@@ -1224,7 +1247,7 @@ const FindClanSection = ({
                      <div className="grid grid-cols-2 gap-2 py-4 border-y border-white/5">
                         <div className="text-center border-r border-white/5">
                            <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Thành viên</span>
-                           <span className="text-white font-bold">{clan.members_count}/50</span>
+                           <span className="text-white font-bold">{clan.members_count}/5</span>
                         </div>
                         <div className="text-center">
                            <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Điểm</span>
@@ -1236,17 +1259,20 @@ const FindClanSection = ({
                         {clan.description || 'Chưa có mô tả.'}
                      </p>
                      
-                     {/* Action Button */}
+                      {/* Action Button */}
                      {!isUserClan && (
                        <div className="flex gap-2">
                           <button 
                             onClick={status === 'pending' ? () => onCancelRequest(clan.id) : () => onJoinClan(clan.id)}
+                            disabled={clan.members_count >= 5 && status !== 'pending'}
                             className={`flex-1 py-3 text-[10px] font-black uppercase tracking-[0.2em] rounded-lg transition-all border
                             ${status === 'pending' 
                               ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20 hover:bg-yellow-500/20' 
-                              : 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-fuchsia-500/30'}`}
+                              : clan.members_count >= 5
+                                ? 'bg-neutral-800 text-gray-500 border-white/5 cursor-not-allowed'
+                                : 'bg-white/5 text-white border-white/10 hover:bg-white/10 hover:border-fuchsia-500/30'}`}
                           >
-                            {status === 'pending' ? 'Hủy Yêu Cầu' : 'Xin Gia Nhập'}
+                            {status === 'pending' ? 'Hủy Yêu Cầu' : clan.members_count >= 5 ? 'Đã Đầy' : 'Xin Gia Nhập'}
                           </button>
                           
                           <button 
