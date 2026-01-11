@@ -36,6 +36,10 @@ interface Match {
   scheduledTime: string; // ISO string
   winnerId?: string;
   winnerClan?: ClanInfo | null;
+  score1?: number;
+  score2?: number;
+  status?: 'waiting' | 'live' | 'completed';
+  actualDuration?: number; // in seconds
 }
 
 // --- Icon Component Helper ---
@@ -289,14 +293,14 @@ const TournamentDetailView = () => {
             clan2 = shuffled[teamsIndex]?.clans || null;
             teamsIndex++;
           }
-          newMatches.push({ id: `r1-m${i}`, clan1, clan2, round: 1, order: i, scheduledTime: getNextTime() });
+          newMatches.push({ id: `r1-m${i}`, clan1, clan2, round: 1, order: i, scheduledTime: getNextTime(), status: 'waiting' });
         }
 
         let currentRoundCount = r1Count / 2;
         let roundNum = 2;
         while (currentRoundCount >= 1) {
           for (let i = 0; i < currentRoundCount; i++) {
-            newMatches.push({ id: `r${roundNum}-m${i}`, clan1: null, clan2: null, round: roundNum, order: i, scheduledTime: getNextTime() });
+            newMatches.push({ id: `r${roundNum}-m${i}`, clan1: null, clan2: null, round: roundNum, order: i, scheduledTime: getNextTime(), status: 'waiting' });
           }
           currentRoundCount /= 2;
           roundNum++;
@@ -322,35 +326,80 @@ const TournamentDetailView = () => {
     const updatedMatches = [...matches];
 
     updatedMatches.forEach(match => {
-      if (match.winnerId) return;
-      const matchStartTime = new Date(match.scheduledTime).getTime();
-      const matchEndTime = matchStartTime + 2 * 60000;
-      const now = currentTime;
-      let matchWinner: ClanInfo | null = null;
+      if (match.status === 'completed') return;
 
+      const matchStartTime = new Date(match.scheduledTime).getTime();
+      const now = currentTime;
+
+      // Handle Byes in Round 1
       if (match.round === 1 && !match.clan2 && match.clan1) {
-        matchWinner = match.clan1;
-      } else if (now >= matchEndTime) {
-        if (match.clan1 && match.clan2) {
-          matchWinner = Math.random() > 0.5 ? match.clan1 : match.clan2;
-        } else if (match.clan1) {
-          matchWinner = match.clan1;
-        } else if (match.clan2) {
-          matchWinner = match.clan2;
-        }
+          match.status = 'completed';
+          match.winnerId = match.clan1.id;
+          match.winnerClan = match.clan1;
+          match.score1 = 3;
+          match.score2 = 0;
+          changed = true;
+
+          const nextRound = match.round + 1;
+          const nextOrder = Math.floor(match.order / 2);
+          const nextMatch = updatedMatches.find(m => m.round === nextRound && m.order === nextOrder);
+          if (nextMatch) {
+            if (match.order % 2 === 0) nextMatch.clan1 = match.clan1;
+            else nextMatch.clan2 = match.clan1;
+          }
+          return;
       }
 
-      if (matchWinner) {
-        match.winnerId = matchWinner.id;
-        match.winnerClan = matchWinner;
-        changed = true;
-        const nextRound = match.round + 1;
-        const nextOrder = Math.floor(match.order / 2);
-        const nextMatch = updatedMatches.find(m => m.round === nextRound && m.order === nextOrder);
-        if (nextMatch) {
-          if (match.order % 2 === 0) nextMatch.clan1 = matchWinner;
-          else nextMatch.clan2 = matchWinner;
-        }
+      // If both clans are present and we reach start time
+      if (match.clan1 && match.clan2) {
+          if (now >= matchStartTime && match.status !== 'live') {
+              match.status = 'live';
+              // Random duration between 40s and 90s for simulation speed
+              match.actualDuration = 40 + Math.floor(Math.random() * 50);
+              match.score1 = 0;
+              match.score2 = 0;
+              changed = true;
+          }
+
+          if (match.status === 'live' && match.actualDuration) {
+              const elapsedSeconds = Math.floor((now - matchStartTime) / 1000);
+              
+              // Increment scores occasionally for visual effect
+              if (elapsedSeconds > 0 && elapsedSeconds % 10 === 0 && (match.score1! + match.score2! < 5)) {
+                  if (Math.random() > 0.5) match.score1 = Math.min(3, match.score1! + 1);
+                  else match.score2 = Math.min(3, match.score2! + 1);
+                  changed = true;
+              }
+
+              if (elapsedSeconds >= match.actualDuration) {
+                  match.status = 'completed';
+                  // Final result: must reach 3 in BO5
+                  const winThreshold = 3;
+                  if (match.score1! < winThreshold && match.score2! < winThreshold) {
+                      if (Math.random() > 0.5) match.score1 = winThreshold;
+                      else match.score2 = winThreshold;
+                  }
+                  
+                  const isClan1Winner = match.score1! > match.score2!;
+                  const matchWinner = isClan1Winner ? match.clan1 : match.clan2;
+                  
+                  match.winnerId = matchWinner!.id;
+                  match.winnerClan = matchWinner;
+                  changed = true;
+
+                  const nextRound = match.round + 1;
+                  const nextOrder = Math.floor(match.order / 2);
+                  const nextMatch = updatedMatches.find(m => m.round === nextRound && m.order === nextOrder);
+                  if (nextMatch) {
+                    if (match.order % 2 === 0) nextMatch.clan1 = matchWinner;
+                    else nextMatch.clan2 = matchWinner;
+                  }
+              }
+          }
+      } else if (match.status === 'live' && (!match.clan1 || !match.clan2)) {
+          // Fallback for safety
+          match.status = 'waiting';
+          changed = true;
       }
     });
 
@@ -553,8 +602,8 @@ const TournamentDetailView = () => {
                                          <div key={match.id} className="match-card-v3">
                                             <div className="match-time-badge"><Clock size={10} className="text-fuchsia-500" /><span>{matchTimeStr}</span>{isLive && <span className="w-1.5 h-1.5 bg-fuchsia-500 rounded-full animate-ping ml-1" />}</div>
                                             <div className={`match-box-pro ${isLive ? 'border-fuchsia-500 shadow-[0_0_30px_rgba(192,38,211,0.3)] ring-1 ring-fuchsia-500/50' : 'border-white/10'}`}>
-                                               <div className={`match-team-row ${match.winnerId === match.clan1?.id && match.clan1 ? 'bg-fuchsia-500/20 shadow-inner' : ''}`}><div className="match-team-icon">{match.clan1 ? <ClanIconDisplay iconName={match.clan1.icon || 'Shield'} color={match.clan1.color || '#fff'} className="w-5 h-5" /> : <Users size={18} className="text-neutral-800" />}</div><span className={`match-team-name ${match.clan1 ? 'text-white' : 'text-neutral-800'}`}>{match.clan1?.name || 'TBD'}</span>{match.winnerId === match.clan1?.id && match.clan1 && <Trophy size={14} className="text-yellow-500 ml-2 animate-bounce" />}</div>
-                                               <div className={`match-team-row ${match.winnerId === match.clan2?.id && match.clan2 ? 'bg-fuchsia-500/20 shadow-inner' : ''}`}><div className="match-team-icon">{match.clan2 ? <ClanIconDisplay iconName={match.clan2.icon || 'Shield'} color={match.clan2.color || '#fff'} className="w-5 h-5" /> : match.round === 1 && match.clan1 ? <Zap size={18} className="text-fuchsia-500/40" /> : <Users size={18} className="text-neutral-800" />}</div><span className={`match-team-name ${match.clan2 ? 'text-white' : match.round === 1 && match.clan1 ? 'text-fuchsia-500/40 italic' : 'text-neutral-800'}`}>{match.clan2?.name || (match.round === 1 && match.clan1 ? 'BYE (Đặc cách)' : 'TBD')}</span>{match.winnerId === match.clan2?.id && match.clan2 && <Trophy size={14} className="text-yellow-500 ml-2 animate-bounce" />}</div>
+                                               <div className={`match-team-row ${match.winnerId === match.clan1?.id && match.clan1 ? 'bg-fuchsia-500/20 shadow-inner' : ''}`}><div className="match-team-icon">{match.clan1 ? <ClanIconDisplay iconName={match.clan1.icon || 'Shield'} color={match.clan1.color || '#fff'} className="w-5 h-5" /> : <Users size={18} className="text-neutral-800" />}</div><span className={`match-team-name ${match.clan1 ? 'text-white' : 'text-neutral-800'}`}>{match.clan1?.name || 'TBD'}</span>{match.winnerId === match.clan1?.id && match.clan1 && match.round === totalRounds && <Trophy size={14} className="text-yellow-500 ml-2 animate-bounce" />}</div>
+                                               <div className={`match-team-row ${match.winnerId === match.clan2?.id && match.clan2 ? 'bg-fuchsia-500/20 shadow-inner' : ''}`}><div className="match-team-icon">{match.clan2 ? <ClanIconDisplay iconName={match.clan2.icon || 'Shield'} color={match.clan2.color || '#fff'} className="w-5 h-5" /> : match.round === 1 && match.clan1 ? <Zap size={18} className="text-fuchsia-500/40" /> : <Users size={18} className="text-neutral-800" />}</div><span className={`match-team-name ${match.clan2 ? 'text-white' : match.round === 1 && match.clan1 ? 'text-fuchsia-500/40 italic' : 'text-neutral-800'}`}>{match.clan2?.name || (match.round === 1 && match.clan1 ? 'BYE (Đặc cách)' : 'TBD')}</span>{match.winnerId === match.clan2?.id && match.clan2 && match.round === totalRounds && <Trophy size={14} className="text-yellow-500 ml-2 animate-bounce" />}</div>
                                                <div className="match-bo5-label">BO5</div>
                                             </div>
                                             {round < totalRounds && (
@@ -607,15 +656,165 @@ const TournamentDetailView = () => {
               </div>
             )}
 
-             {activeTab === 'match' && (<div className="flex items-center justify-center h-48 text-gray-500 font-bold uppercase tracking-wider">Các trận đấu sẽ xuất hiện khi giải đấu bắt đầu.</div>)}
+             {activeTab === 'match' && (
+               <div className="space-y-4">
+                 {matches.filter(m => m.clan1 || m.clan2).length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-80 border border-white/5 bg-black/40 rounded-2xl relative overflow-hidden group">
+                       <div className="absolute inset-0 bg-dot-pattern opacity-5" />
+                       <div className="p-6 bg-fuchsia-500/20 rounded-full mb-6 relative">
+                         <Swords size={48} className="text-fuchsia-500/30 animate-pulse" />
+                       </div>
+                       <h3 className="text-xl font-black text-white uppercase tracking-tighter italic mb-2">Danh sách trận đấu</h3>
+                       <p className="text-gray-500 text-xs font-bold uppercase tracking-widest text-center max-w-xs">Các trận đấu sẽ xuất hiện khi giải đấu bắt đầu (Lúc {TOURNAMENT_CONFIG.DISPLAY_TIME})</p>
+                    </div>
+                 ) : (
+                   <div className="grid grid-cols-1 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                     {matches
+                       .filter(m => m.clan1 || m.clan2)
+                       .sort((a, b) => {
+                         // Sorting priority: live > initial/waiting > completed
+                         const getPriority = (m: Match) => {
+                           if (m.status === 'live') return 0;
+                           if (m.status === 'completed') return 2;
+                           return 1; // 'waiting' or undefined
+                         };
+                         const pA = getPriority(a);
+                         const pB = getPriority(b);
+                         if (pA !== pB) return pA - pB;
+                         // Same priority: sort by time
+                         return new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime();
+                       })
+                       .map((match) => {
+                         const matchDate = new Date(match.scheduledTime);
+                         const isLive = match.status === 'live';
+                         const isCompleted = match.status === 'completed';
+                         const totalRounds = Math.log2(Math.pow(2, Math.ceil(Math.log2(registrations.length || 16))));
+                         
+                         // Match timer for live matches
+                         let elapsedStr = "";
+                         if (isLive) {
+                            const diff = Math.floor((currentTime - matchDate.getTime()) / 1000);
+                            const mins = Math.floor(diff / 60);
+                            const secs = diff % 60;
+                            elapsedStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+                         }
+
+                         return (
+                           <div key={match.id} className={`p-5 bg-neutral-900 border ${isLive ? 'border-fuchsia-500 shadow-[0_0_20px_rgba(192,38,211,0.2)]' : 'border-white/5'} rounded-xl group transition-all hover:bg-neutral-800/80`}>
+                             <div className="flex items-center justify-between mb-6">
+                               <div className="flex items-center gap-3">
+                                 <div className="px-2.5 py-1 bg-fuchsia-500/10 border border-fuchsia-500/20 rounded-md">
+                                    <span className="text-[10px] font-black text-fuchsia-500 uppercase tracking-widest">
+                                      {match.round === totalRounds ? 'Chung kết' : match.round === totalRounds - 1 ? 'Bán kết' : `Vòng ${match.round}`}
+                                    </span>
+                                 </div>
+                                 {isLive && (
+                                   <div className="flex items-center gap-2 px-2.5 py-1 bg-red-500/10 border border-red-500/20 rounded-md animate-pulse">
+                                     <div className="w-1.5 h-1.5 bg-red-500 rounded-full shadow-[0_0_5px_#ef4444]" />
+                                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">LIVE {elapsedStr}</span>
+                                   </div>
+                                 )}
+                                 {isCompleted && (
+                                   <div className="px-2.5 py-1 bg-green-500/10 border border-green-500/20 rounded-md">
+                                     <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Đã xong</span>
+                                   </div>
+                                 )}
+                               </div>
+                               <div className="flex items-center gap-2 px-3 py-1 bg-black/40 rounded-full border border-white/5">
+                                 <Clock size={12} className="text-fuchsia-500" />
+                                 <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                   {matchDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                 </span>
+                               </div>
+                             </div>
+
+                             <div className="flex items-center justify-between gap-6 relative">
+                               {/* Team 1 */}
+                               <div className="flex-1 flex items-center justify-end gap-4 text-right">
+                                 <div className="flex flex-col items-end">
+                                   <span className={`text-sm md:text-base font-black uppercase italic tracking-tighter transition-colors ${match.winnerId === match.clan1?.id ? 'text-white' : isCompleted ? 'text-gray-600' : 'text-gray-300'}`}>
+                                     {match.clan1?.name || 'TBD'}
+                                   </span>
+                                   <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${match.clan1 ? 'text-fuchsia-500' : 'text-gray-700'}`}>
+                                     [{match.clan1?.tag || '---'}]
+                                   </span>
+                                 </div>
+                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${match.winnerId === match.clan1?.id ? 'bg-fuchsia-500/20 border-fuchsia-500 shadow-[0_0_15px_rgba(192,38,211,0.2)]' : 'bg-neutral-800 border-white/10'}`}>
+                                   {match.clan1 ? <ClanIconDisplay iconName={match.clan1.icon || 'Shield'} color={match.clan1.color || '#fff'} className="w-6 h-6" /> : <Users size={24} className="text-neutral-700" />}
+                                 </div>
+                               </div>
+
+                               {/* VS / Score Divider */}
+                               <div className="flex flex-col items-center gap-2">
+                                 <div className="flex items-center gap-4">
+                                     <span className={`text-2xl font-black italic ${isLive ? 'text-white' : isCompleted ? 'text-gray-400' : 'text-gray-800'}`}>
+                                         {match.score1 ?? 0}
+                                     </span>
+                                     <div className="w-8 h-8 rounded-full bg-black border border-white/10 flex items-center justify-center relative z-10">
+                                       <span className="text-[10px] font-black text-fuchsia-500 italic">VS</span>
+                                     </div>
+                                     <span className={`text-2xl font-black italic ${isLive ? 'text-white' : isCompleted ? 'text-gray-400' : 'text-gray-800'}`}>
+                                         {match.score2 ?? 0}
+                                     </span>
+                                 </div>
+                                 <div className="px-2 py-0.5 bg-neutral-800 border border-white/5 rounded text-[8px] font-black text-gray-500 tracking-[0.2em]">BO5</div>
+                               </div>
+
+                               {/* Team 2 */}
+                               <div className="flex-1 flex items-center gap-4">
+                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-all ${match.winnerId === match.clan2?.id ? 'bg-fuchsia-500/20 border-fuchsia-500 shadow-[0_0_15px_rgba(192,38,211,0.2)]' : 'bg-neutral-800 border-white/10'}`}>
+                                   {match.clan2 ? <ClanIconDisplay iconName={match.clan2.icon || 'Shield'} color={match.clan2.color || '#fff'} className="w-6 h-6" /> : match.round === 1 && match.clan1 ? <Zap size={24} className="text-fuchsia-500/40" /> : <Users size={24} className="text-neutral-700" />}
+                                 </div>
+                                 <div className="flex flex-col">
+                                   <span className={`text-sm md:text-base font-black uppercase italic tracking-tighter transition-colors ${match.winnerId === match.clan2?.id ? 'text-white' : isCompleted ? 'text-gray-600' : 'text-gray-300'}`}>
+                                     {match.clan2?.name || (match.round === 1 && match.clan1 ? 'BYE (Đặc cách)' : 'TBD')}
+                                   </span>
+                                   <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${match.clan2 ? 'text-fuchsia-500' : 'text-gray-700'}`}>
+                                     [{match.clan2?.tag || '---'}]
+                                   </span>
+                                 </div>
+                               </div>
+
+                               {/* Winner Indicator */}
+                               {isCompleted && match.round === totalRounds && (
+                                 <div className={`absolute top-[-20px] ${match.winnerId === match.clan1?.id ? 'left-0' : 'right-0'} animate-bounce`}>
+                                   <Trophy size={16} className="text-yellow-500" />
+                                 </div>
+                               )}
+                             </div>
+                           </div>
+                         );
+                       })}
+                   </div>
+
+                 )}
+               </div>
+             )}
+
               </>
             )}
           </div>
         </div>
-
         <div className="space-y-6">
           <div className="p-6 bg-fuchsia-900/10 border border-fuchsia-500/20 rounded-xl relative overflow-hidden group">
-            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" /><div className="relative z-10"><h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 border-b border-fuchsia-500/30 pb-3">Thông tin đăng ký</h3><div className="space-y-4 mb-8"><div className="flex justify-between items-center text-sm"><span className="text-gray-500 font-bold">Lệ phí</span><span className="flex items-center gap-1 text-white font-black">{currentData.entry_fee} <Coins size={14} className="text-yellow-500" /></span></div><div className="flex justify-between items-center text-sm"><span className="text-gray-500 font-bold">Ngày kết thúc đăng ký</span><div className="text-right"><div className="text-white font-black">{TOURNAMENT_CONFIG.REG_END_DATE}</div><div className="text-[10px] text-fuchsia-500 font-bold">{TOURNAMENT_CONFIG.REG_END_TIME} GMT+7</div></div></div><div className="flex justify-between items-center text-sm"><span className="text-gray-500 font-bold">Chế độ</span><span className="text-white font-black">{currentData.tournament_type} Clan</span></div></div><button onClick={handleRegisterClick} disabled={isFull || isRegistered || isRegistering} className={`w-full py-4 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-lg flex items-center justify-center gap-2 ${isFull || isRegistered ? 'bg-neutral-800 text-gray-500 cursor-not-allowed border border-white/5' : 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white group-hover:shadow-[0_0_20px_rgba(192,38,211,0.4)]'}`}>{isRegistering ? (<Loader2 className="animate-spin" size={16} />) : isRegistered ? 'Đã đăng ký' : isFull ? 'Đã đóng (Full)' : <>{'Đăng ký ngay'} <ChevronRight size={16} /></>}</button></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            <div className="relative z-10">
+              <h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 border-b border-fuchsia-500/30 pb-3">Thông tin đăng ký</h3>
+              {loading ? (
+                <div className="space-y-4 mb-8">
+                  <div className="flex justify-between items-center"><SkeletonBox className="h-4 w-16" /><SkeletonBox className="h-4 w-20" /></div>
+                  <div className="flex justify-between items-center"><SkeletonBox className="h-4 w-32" /><SkeletonBox className="h-8 w-24" /></div>
+                  <div className="flex justify-between items-center"><SkeletonBox className="h-4 w-16" /><SkeletonBox className="h-4 w-24" /></div>
+                </div>
+              ) : (
+                <div className="space-y-4 mb-8">
+                  <div className="flex justify-between items-center text-sm"><span className="text-gray-500 font-bold">Lệ phí</span><span className="flex items-center gap-1 text-white font-black">{currentData.entry_fee} <Coins size={14} className="text-yellow-500" /></span></div>
+                  <div className="flex justify-between items-center text-sm"><span className="text-gray-500 font-bold">Ngày kết thúc đăng ký</span><div className="text-right"><div className="text-white font-black">{TOURNAMENT_CONFIG.REG_END_DATE}</div><div className="text-[10px] text-fuchsia-500 font-bold">{TOURNAMENT_CONFIG.REG_END_TIME} GMT+7</div></div></div>
+                  <div className="flex justify-between items-center text-sm"><span className="text-gray-500 font-bold">Chế độ</span><span className="text-white font-black">{currentData.tournament_type} Clan</span></div>
+                </div>
+              )}
+              <button onClick={handleRegisterClick} disabled={isFull || isRegistered || isRegistering || loading} className={`w-full py-4 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-lg flex items-center justify-center gap-2 ${isFull || isRegistered || loading ? 'bg-neutral-800 text-gray-500 cursor-not-allowed border border-white/5' : 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white group-hover:shadow-[0_0_20px_rgba(192,38,211,0.4)]'}`}>{isRegistering ? (<Loader2 className="animate-spin" size={16} />) : isRegistered ? 'Đã đăng ký' : isFull ? 'Đã đóng (Full)' : <>{'Đăng ký ngay'} <ChevronRight size={16} /></>}</button>
+            </div>
           </div>    
           <div className="p-6 bg-neutral-900 border border-white/5 rounded-xl"><h3 className="text-sm font-black text-white uppercase tracking-widest mb-6 border-b border-white/10 pb-3">Tin tức liên quan</h3><div className="space-y-4">{[1, 2].map(i => (<div key={i} className="group cursor-pointer"><span className="text-[10px] text-fuchsia-500 font-bold uppercase mb-1 block">Tin tức</span><h4 className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors leading-tight mb-2">Cập nhật thay đổi luật thi đấu mùa giải 2025</h4><span className="text-[10px] text-gray-600 flex items-center gap-2"><Clock size={10} /> 2 giờ trước</span></div>))}</div></div>
         </div>
