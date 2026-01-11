@@ -169,9 +169,9 @@ const TournamentDetailView = () => {
       'Nghiêm cấm mọi hành vi gian lận.'
     ],
     prizes: [
-      { rank: '1st', reward: '5.000 ',special:'Huy hiệu độc quyền' },
-      { rank: '2nd', reward: '3.000 ' },
-      { rank: '3rd-4th', reward: '1.000 ' }
+      { rank: '1st', reward: '3.000/Thành viên ',special:'Huy hiệu độc quyền' },
+      { rank: '2nd', reward: '2.000/Thành viên ' },
+      { rank: '3rd', reward: '1.000/Thành viên ' }
     ]
   }), []);
 

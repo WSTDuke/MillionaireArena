@@ -18,6 +18,9 @@ import {
   Plus,
 } from "lucide-react";
 import Toast, { type ToastType } from "../../components/Toast";
+import MatchOverlay from "./components/MatchOverlay";
+import MatchMonitor from "./components/MatchMonitor";
+
 
 interface PlayerResult {
   id: string;
@@ -41,6 +44,11 @@ const DashboardPage = () => {
   const searchRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const mainContentRef = useRef<HTMLElement>(null);
+
+  // Match Overlay State
+  const [showMatchOverlay, setShowMatchOverlay] = useState(false);
+  const [matchOverlayData, setMatchOverlayData] = useState<any>(null);
+
   const location = useLocation();
 
   // Scroll to top on route change
@@ -193,6 +201,26 @@ const DashboardPage = () => {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans overflow-hidden">
+      {/* Background Monitor for Tournament Matches */}
+      <MatchMonitor 
+        userClanId={dashboardCache?.clanInfo?.id}
+        isOpen={showMatchOverlay}
+        onMatchDetected={(data) => {
+          setMatchOverlayData(data);
+          setShowMatchOverlay(true);
+        }}
+      />
+
+      {/* Full Screen Match Overlay */}
+      {matchOverlayData && (
+        <MatchOverlay 
+          key={matchOverlayData.matchId || 'current-match'}
+          isOpen={showMatchOverlay}
+          onClose={() => setShowMatchOverlay(false)}
+          {...matchOverlayData}
+        />
+      )}
+
       {/* Sidebar */}
       <aside className="w-20 md:w-64 bg-neutral-900 border-r border-white/5 flex flex-col z-50">
         <div className="p-6 flex items-center gap-3">
